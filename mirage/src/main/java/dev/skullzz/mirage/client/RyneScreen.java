@@ -358,7 +358,7 @@ public class RyneScreen extends Screen {
         if (!ChatHook.attached()) return "Cannot read chat: " + ChatHook.reason();
         Tracker.Session session = Sessions.current();
         if (session == null) {
-            return Sessions.tracking() ? "Tracking, but no session started"
+            return Sessions.tracking() ? "On. Waiting for the first payment."
                     : "Off. Nothing is being read.";
         }
         return Tracker.money(session.net()) + " over " + session.payments.size()

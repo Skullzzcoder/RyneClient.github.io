@@ -16,8 +16,11 @@ import dev.skullzz.mirage.Mirage;
 /**
  * Sessions of the tracker: the one running, the ones finished, and what to do about them.
  *
- * <p>Nothing is counted unless tracking is on and a session has been started, both by
- * hand. A tally that starts itself is a tally you cannot trust the start of.
+ * <p>Nothing is counted unless tracking is on. The first payment after that starts a
+ * session by itself; start and stop by hand only to split one sitting from the next.
+ *
+ * <p>Tracking itself stays off until you switch it on, so a client left running does not
+ * quietly tally somebody else's game.
  */
 public final class Sessions {
 
@@ -211,10 +214,13 @@ public final class Sessions {
                         + "  " + payment.player,
                 payment.incoming ? Toasts.Kind.GOOD : Toasts.Kind.BAD);
 
-        if (current != null) {
-            current.payments.add(payment);
-            checkStreak();
-        }
+        // A payment arriving with no session running used to be dropped on the floor:
+        // tracking was on, the line parsed, and the tally still read zero with nothing
+        // said. Money moving is what a session is, so start one here rather than making
+        // you remember a second switch.
+        if (current == null) start();
+        current.payments.add(payment);
+        checkStreak();
         save();
         return payment;
     }

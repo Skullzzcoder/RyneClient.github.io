@@ -133,8 +133,16 @@ check("tracking starts off", "boolean tracking = false;" in sess)
 check("the HUD starts off", "boolean hud = false;" in sess)
 offer = body(sess, "public static Tracker.Payment offer(String line) {")
 check("nothing is read while tracking is off", "if (!tracking) return null;" in offer)
-check("a payment outside a session is not counted",
-      "if (current != null)" in offer)
+# This check used to read `"if (current != null)" in offer` -- it asserted the bug. A
+# payment that parsed with no session running was dropped on the floor: the tally read
+# zero and nothing was said, which is indistinguishable from a payment that never parsed.
+# Money moving is what a session is, so the first payment starts one.
+check("a parsed payment is always counted",
+      "current.payments.add(payment);" in offer and "if (current != null) {" not in offer)
+check("a payment with no session running starts one",
+      "if (current == null) start();" in offer
+      and offer.index("if (current == null) start();")
+          < offer.index("current.payments.add(payment);"))
 
 # The alert is once per run. One that repeats is one that gets ignored, and it is still
 # the same run.
@@ -170,8 +178,10 @@ check("status says loudly when chat is not being read",
 check("and says it before anything about the tally",
       "NOT READING" in status
       and status.index("NOT READING") < status.index("Session"))
-check("status says how to fix each thing off",
-      "/fake track on" in status and "/fake track start" in status)
+check("status says how to switch tracking on",
+      "/fake track on" in status)
+check("and does not send you after a session switch that no longer exists",
+      "/fake track start" not in status)
 check("turning it on says if chat cannot be read", "ChatHook.attached()" in client)
 
 # Counting nothing and a quiet night look identical from the outside, so there has to be a
@@ -192,6 +202,7 @@ for sub in ("on", "off", "start", "end", "rake", "alert", "raw", "lines"):
 
 print("FAILED:\n  " + "\n  ".join(fails) if fails else
       "%d chat lines parsed exactly, including %d written by other people that must not "
-      "count; nothing counts until both switches are on, and a chat hook that fails says so"
+      "count; nothing counts until tracking is on, a parsed payment is never dropped for want of a session, and a chat hook that fails says so"
       % (len(CASES), sum(1 for _, want in CASES if want == "-")))
 sys.exit(1 if fails else 0)
+

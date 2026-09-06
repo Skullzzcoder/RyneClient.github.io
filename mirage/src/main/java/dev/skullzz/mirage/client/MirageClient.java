@@ -1701,7 +1701,7 @@ public class MirageClient implements ClientModInitializer {
 
         Tracker.Session session = Sessions.current();
         if (session == null) {
-            out.append("\n3. Session     none  <-- /fake track start");
+            out.append("\n3. Session     none yet - the first payment starts one");
         } else {
             out.append("\n3. Session     ").append(Tracker.money(session.net()))
                     .append("  (in ").append(Tracker.money(session.in()))

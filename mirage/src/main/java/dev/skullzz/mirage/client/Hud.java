@@ -200,8 +200,11 @@ public final class Hud {
         if (!Sessions.tracking()) return null;
         if (!ChatHook.attached()) return "tracker: cannot read chat";
 
+        // Before the first payment there is no session yet, and one starts by itself the
+        // moment money moves. Zeroes are the truth of that state and they show the bar is
+        // alive; "no session" read like a fault and sent you looking for a switch.
         Tracker.Session session = Sessions.current();
-        if (session == null) return "tracker: no session";
+        if (session == null) return Tracker.money(0) + "   0W / 0L";
 
         String text = Tracker.money(session.net()) + "   "
                 + session.wins() + "W / " + session.losses() + "L";

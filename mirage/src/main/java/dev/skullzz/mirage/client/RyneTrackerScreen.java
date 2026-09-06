@@ -290,7 +290,7 @@ public class RyneTrackerScreen extends Screen {
     private void paintOwed(DrawContext context, RyneTheme.Theme theme, int x, int y,
                            Tracker.Session session) {
         if (session == null) {
-            text(context, "no session running", x + 8, y, theme.dim);
+            text(context, "nothing owed yet", x + 8, y, theme.dim);
             return;
         }
 
