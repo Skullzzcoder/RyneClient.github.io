@@ -16,6 +16,7 @@ import java.util.Set;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
@@ -36,6 +37,8 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+
+import dev.skullzz.mirage.Mirage;
 
 /**
  * Makes watched dispensers appear to fire something of your choosing, and optionally shoot a
