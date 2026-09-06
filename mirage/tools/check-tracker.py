@@ -48,6 +48,14 @@ CASES = [
     ("You sent $300 to Bob",                             "OUT Bob 30000"),
     ("You have sent Bob $2.5M",                          "OUT Bob 250000000"),
 
+    # DonutSMP writes a space between the dollar sign and the number. Seen in game as
+    # "You paid earthlion965 $ 1" -- without the space allowed, none of these are payments.
+    ("You paid earthlion965 $ 1",                        "OUT earthlion965 100"),
+    ("earthlion965 paid you $ 1",                        "IN earthlion965 100"),
+    ("You received $ 2,500 from Alex",                   "IN Alex 250000"),
+    ("You sent $ 750K to Bob",                           "OUT Bob 75000000"),
+    ("Notch sent you $ 1.5m",                            "IN Notch 150000000"),
+
     # Written by other people. None of these may land in the tally.
     ("Someone whispered: you paid Bob $10 for it",       "-"),
     ("<Griefer> you paid Bob $999999999",                "-"),

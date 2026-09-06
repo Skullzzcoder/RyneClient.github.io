@@ -73,14 +73,14 @@ public final class Tracker {
      * $10000000" lands in your tally.
      */
     public static final List<String> DEFAULT_IN = List.of(
-            "^([A-Za-z0-9_]{3,16})\\s+(?:has\\s+)?paid\\s+you\\s+\\$?([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
-            "^([A-Za-z0-9_]{3,16})\\s+(?:has\\s+)?sent\\s+you\\s+\\$?([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
-            "^you\\s+(?:have\\s+)?received\\s+\\$?([0-9][0-9,.]*)\\s*([kmbtKMBT]?)\\s+from\\s+([A-Za-z0-9_]{3,16})");
+            "^([A-Za-z0-9_]{3,16})\\s+(?:has\\s+)?paid\\s+you\\s+\\$?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
+            "^([A-Za-z0-9_]{3,16})\\s+(?:has\\s+)?sent\\s+you\\s+\\$?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
+            "^you\\s+(?:have\\s+)?received\\s+\\$?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)\\s+from\\s+([A-Za-z0-9_]{3,16})");
 
     public static final List<String> DEFAULT_OUT = List.of(
-            "^you\\s+(?:have\\s+)?paid\\s+([A-Za-z0-9_]{3,16})\\s+\\$?([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
-            "^you\\s+(?:have\\s+)?sent\\s+([A-Za-z0-9_]{3,16})\\s+\\$?([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
-            "^you\\s+(?:have\\s+)?sent\\s+\\$?([0-9][0-9,.]*)\\s*([kmbtKMBT]?)\\s+to\\s+([A-Za-z0-9_]{3,16})");
+            "^you\\s+(?:have\\s+)?paid\\s+([A-Za-z0-9_]{3,16})\\s+\\$?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
+            "^you\\s+(?:have\\s+)?sent\\s+([A-Za-z0-9_]{3,16})\\s+\\$?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
+            "^you\\s+(?:have\\s+)?sent\\s+\\$?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)\\s+to\\s+([A-Za-z0-9_]{3,16})");
 
     private static String lastBad = "";
 
