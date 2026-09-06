@@ -58,7 +58,11 @@ public final class Hud {
             new Element("tracker", "Tracker bar", 0, 4, false),
             new Element("coords", "Coordinates", 4, 4, false),
             new Element("compass", "Waypoint compass", 0, 22, false),
-            new Element("clock", "Session time", 4, 16, false)));
+            new Element("clock", "Session time", 4, 16, false),
+            new Element("toasts", "Notices", 4, 40, true)));
+
+    /** When the last frame was, so toasts age in real time rather than per frame. */
+    private static long lastFrame;
 
     private static boolean attached;
     private static String reason = "not attached yet";
@@ -128,6 +132,14 @@ public final class Hud {
         int width = client.getWindow().getScaledWidth();
         int height = client.getWindow().getScaledHeight();
 
+        // Aged here rather than on the client tick: this is the only place that runs once
+        // per frame, and a notice that faded in ticks would crawl at a low frame rate.
+        long now = System.nanoTime();
+        float seconds = lastFrame == 0 ? 0f
+                : Math.min(0.1f, (now - lastFrame) / 1_000_000_000f);
+        lastFrame = now;
+        if (!editing) Toasts.tick(seconds);
+
         for (Element element : ELEMENTS) {
             if (!element.on && !editing) continue;
             element.x = RyneGui.clampX(element.x, 40, width);
@@ -138,6 +150,7 @@ public final class Hud {
                 case "coords" -> coords(context, client, element, editing);
                 case "compass" -> compass(context, client, element, width, editing);
                 case "clock" -> clock(context, client, element, editing);
+                case "toasts" -> toasts(context, client, element, editing);
                 default -> { }
             }
         }
@@ -254,6 +267,52 @@ public final class Hud {
                     + Compass.shortDistance(Compass.flatDistance(dx, dz));
             RyneDraw.text(context, client.textRenderer, label,
                     x - label.length() * 3, element.y + 7, mark.rgb());
+        }
+    }
+
+    /**
+     * The stack of notices, newest at the bottom, each sliding in from the left.
+     *
+     * <p>Drawn from the oldest down so a new one appears under the others rather than
+     * shoving them about: a stack that reorders itself as it grows is a stack nobody can
+     * read the top line of.
+     */
+    private static void toasts(DrawContext context, MinecraftClient client, Element element,
+                               boolean editing) {
+        RyneTheme.Theme theme = RyneTheme.current();
+        List<Toasts.Toast> live = Toasts.live();
+
+        if (live.isEmpty()) {
+            if (editing) {
+                RyneDraw.box(context, element.x, element.y, 140, 14, 0x600B0D12);
+                RyneDraw.text(context, client.textRenderer, "notices appear here",
+                        element.x + 6, element.y + 3, theme.dim);
+            }
+            return;
+        }
+
+        int y = element.y;
+        for (Toasts.Toast toast : live) {
+            float presence = toast.presence();
+            if (presence <= 0f) continue;
+
+            int width = toast.text.length() * 6 + 18;
+            // Slides in from the left by its own width, so it arrives rather than blinks.
+            int x = element.x - Math.round((1f - presence) * 24);
+
+            int edge = switch (toast.kind) {
+                case GOOD -> 0xFF7FD18B;
+                case BAD -> 0xFFE0655F;
+                case WARN -> 0xFFE0A55F;
+                default -> theme.accent;
+            };
+
+            RyneDraw.rounded(context, x, y, width, 15,
+                    RyneGui.fade(0xE00B0D12, presence));
+            RyneDraw.box(context, x, y + 3, 2, 9, RyneGui.fade(edge, presence));
+            RyneDraw.text(context, client.textRenderer, toast.text, x + 8, y + 4,
+                    RyneGui.fade(theme.text, presence));
+            y += 17;
         }
     }
 

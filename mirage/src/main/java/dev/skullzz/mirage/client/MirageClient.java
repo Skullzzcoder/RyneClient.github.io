@@ -1761,6 +1761,34 @@ public class MirageClient implements ClientModInitializer {
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> rigBranch() {
         return ClientCommandManager.literal("rig")
                 .then(ClientCommandManager.literal("list").executes(MirageClient::listRigs))
+                .then(ClientCommandManager.literal("save")
+                        .then(ClientCommandManager.argument("as", StringArgumentType.word())
+                                .executes(context -> {
+                                    String as = StringArgumentType.getString(context, "as");
+                                    return ClientDispensers.saveSetup(as)
+                                            ? feedback(context, "Kept this rig as '" + as
+                                                    + "'. /fake rig load " + as
+                                                    + " brings it back.")
+                                            : error(context, ClientDispensers.lastSetup());
+                                })))
+                .then(ClientCommandManager.literal("load")
+                        .then(ClientCommandManager.argument("as", StringArgumentType.word())
+                                .suggests((context, builder) -> CommandSource.suggestMatching(
+                                        ClientDispensers.setups(), builder))
+                                .executes(context -> {
+                                    String as = StringArgumentType.getString(context, "as");
+                                    return ClientDispensers.loadSetup(as)
+                                            ? feedback(context, "Loaded '" + as
+                                                    + "' into a new rig and switched to it.")
+                                            : error(context, ClientDispensers.lastSetup());
+                                })))
+                .then(ClientCommandManager.literal("setups").executes(context -> {
+                    java.util.List<String> kept = ClientDispensers.setups();
+                    return kept.isEmpty()
+                            ? feedback(context, "No saved setups. /fake rig save <name> "
+                                    + "keeps the one you are on.")
+                            : feedback(context, "Saved setups: " + String.join(", ", kept));
+                }))
                 .then(ClientCommandManager.literal("queue")
                         .executes(MirageClient::showQueue)
                         .then(ClientCommandManager.literal("clear").executes(context -> {

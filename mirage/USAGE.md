@@ -677,8 +677,8 @@ that existed shows everywhere rather than vanishing.
 
 ### The HUD
 
-Four pieces, each switched on separately: **tracker bar**, **coordinates**, **waypoint
-compass**, **session time**. `/fake hud` opens the editor:
+Five pieces, each switched on separately: **tracker bar**, **coordinates**, **waypoint
+compass**, **session time**, **notices**. `/fake hud` opens the editor:
 
 - **Drag** to move one. **Click** to switch it on or off. Escape when done.
 - Switched-off elements are drawn dimmed with their name, because an element you cannot
@@ -694,6 +694,19 @@ under each mark.
 > south and increases toward west, which is its own convention; the first version of this
 > had the whole compass rotated 180°, which looks entirely plausible until you have walked
 > the wrong way for two minutes.
+
+### Notices
+
+Short messages that slide in, sit for four seconds and stop existing — payments in and
+out, a losing run, anything the mod would otherwise only say in chat. Green for money in,
+red for out, amber for a warning.
+
+Chat is the wrong place for something you need for two seconds: it scrolls away, and it
+is in every screenshot of the chat box. Move them wherever you like in `/fake hud`.
+
+> The same notice twice in a row restarts rather than stacking, so holding a key does not
+> build a column of identical messages, and a full screen drops the **oldest** — what just
+> happened is the part worth reading.
 
 ## Exporting the payments
 
@@ -782,10 +795,31 @@ Right Shift. Panels you can put where you like.
 - **Where you put them is remembered**, in `config/mirage-layout.json`, by panel name — so
   adding a panel later moves nothing you have already placed.
 
-Panels: **Client** (rigs, everything, quiet), **Tracker**, **World**, **Rigs**, **Theme**.
+Panels: **Client** (rigs, everything, quiet, reset layout), **Tracker**, **HUD**,
+**World**, **Rigs**, **Theme**.
+
+Panels **snap** to the screen edges, the centre, and each other's edges when you let go —
+lined up on release rather than mid-drag, since snapping while you move makes the panel
+fight the pointer. Title bars have a gradient, panels a soft shadow and clipped corners,
+and a row lights up with a wash of the accent that grows from the left. **Reset layout**
+on the Client panel puts everything back where it started.
 
 `/fake pages` still opens the older list-and-pages menu, which has the longer
 explanations on it.
+
+### Saving a rig setup
+
+    /fake rig save casino      keeps the rig you are on, by name
+    /fake rig load casino      brings it back as a new rig
+    /fake rig setups           what is kept
+
+Setups live in `config/mirage-setups/` as one file each, so you can back them up or move
+them to another install. A setup is the **shape of a game** — items, spread, payouts,
+sides, settings. It deliberately does not carry **which dispensers are watched**: those
+are positions in one world, and a setup is meant to be laid out again somewhere else.
+
+Loading makes a **new** rig rather than overwriting the one you are on, and a name that
+already exists gets a number — loading a setup should never be a way to lose what you had.
 
 ### Queuing the next few results
 

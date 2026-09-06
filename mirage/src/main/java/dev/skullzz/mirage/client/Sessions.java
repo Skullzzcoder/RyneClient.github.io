@@ -145,6 +145,12 @@ public final class Sessions {
         recent.add(payment);
         while (recent.size() > RECENT) recent.remove(0);
 
+        // Said where you are already looking, and gone in four seconds. A payment is the
+        // kind of thing you want to see happen and never want to read again.
+        Toasts.add((payment.incoming ? "+" : "-") + Tracker.money(payment.cents)
+                        + "  " + payment.player,
+                payment.incoming ? Toasts.Kind.GOOD : Toasts.Kind.BAD);
+
         if (current != null) {
             current.payments.add(payment);
             checkStreak();
@@ -170,6 +176,7 @@ public final class Sessions {
             lastAlert = run + " payments out in a row, " + Tracker.money(current.net())
                     + " on the session.";
             ClientDispensers.notice(lastAlert);
+            Toasts.add(run + " out in a row", Toasts.Kind.WARN);
         }
     }
 

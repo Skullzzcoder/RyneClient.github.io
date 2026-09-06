@@ -116,9 +116,15 @@ check("the readback can be turned on", 'literal("announce")' in mc
       and "SelfFakes.setAnnounceSwitching(false)" in mc)
 
 # ---------------------------------------------------------------- it has to keep
-save = re.search(r"public static void save\(JsonObject root\) \{(.*?)\n    \}", disp, re.S).group(1)
+# What a rig consists of is written in one place now, shared by the config save and by
+# saving a single setup to its own file -- two copies is how one of them ends up missing a
+# field nobody notices until a setup comes back wrong.
+save = re.search(r"private static JsonObject writeProfile\(RigProfile profile\) \{(.*?)\n    \}",
+                 disp, re.S).group(1)
 check("the spread is written", 'mix.add("counts", counts);' in save
       and 'mix.add("payouts", payouts);' in save)
+check("the config save goes through it", "profileJson.add(writeProfile(profile));" in disp)
+check("and so does saving one setup", 'root.add("rig", writeProfile(profile));' in disp)
 read = re.search(r"private static void readProfile\(JsonObject json\) \{(.*?)\n    \}",
                  disp, re.S).group(1)
 check("the spread is read back", 'json.has("mix")' in read and "profile.mix = true;" in read)

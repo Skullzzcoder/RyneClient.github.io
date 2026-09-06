@@ -5,15 +5,13 @@ import net.minecraft.text.Text;
 import net.minecraft.client.font.TextRenderer;
 
 /**
- * The two things every screen here paints with, in one place.
+ * Everything the screens paint with, built out of one call.
  *
  * <p>{@link #box} is the only call in this mod that has not already been watched compile:
  * nothing else fills a rectangle. It lives here, alone, so that if {@code fill} has been
  * renamed in some version of Minecraft it is one compile error in one method rather than
- * one in every screen -- and {@code gradlew inspectApi} prints what replaced it.
- *
- * <p>{@link #text} is not in that position at all; it is here only so the two screens draw
- * text the same way.
+ * one in every screen -- and everything below is built from it, so gradients, shadows and
+ * corners cost nothing extra in risk.
  */
 public final class RyneDraw {
 
@@ -24,6 +22,71 @@ public final class RyneDraw {
     public static void box(DrawContext context, int x, int y, int width, int height,
                            int colour) {
         context.fill(x, y, x + width, y + height, colour);
+    }
+
+    /**
+     * A vertical fade, drawn as a stack of thin bands.
+     *
+     * <p>Minecraft can do this in one call, but the name for it is not one this mod has
+     * seen compile and a gradient is not worth a build failure. Sixteen bands is past
+     * where the eye can see the steps at these heights, and sixteen rectangles is nothing.
+     */
+    public static void gradient(DrawContext context, int x, int y, int width, int height,
+                                int top, int bottom) {
+        if (height <= 0 || width <= 0) return;
+
+        int bands = Math.min(16, height);
+        for (int i = 0; i < bands; i++) {
+            int bandY = y + i * height / bands;
+            int nextY = y + (i + 1) * height / bands;
+            box(context, x, bandY, width, Math.max(1, nextY - bandY),
+                    RyneGui.blend(top, bottom, bands == 1 ? 0f : i / (float) (bands - 1)));
+        }
+    }
+
+    /**
+     * A rectangle with its corners taken off.
+     *
+     * <p>Three stacked rectangles, insetting the top and bottom rows by a pixel each. Not
+     * a real curve -- there is no way to draw one out of axis-aligned rectangles -- but at
+     * two pixels the eye reads it as a rounded corner rather than as a chamfer, and it is
+     * the difference between a panel that looks drawn and one that looks placed.
+     */
+    public static void rounded(DrawContext context, int x, int y, int width, int height,
+                               int colour) {
+        if (width <= 4 || height <= 4) {
+            box(context, x, y, width, height, colour);
+            return;
+        }
+        box(context, x + 2, y, width - 4, 1, colour);
+        box(context, x + 1, y + 1, width - 2, 1, colour);
+        box(context, x, y + 2, width, height - 4, colour);
+        box(context, x + 1, y + height - 2, width - 2, 1, colour);
+        box(context, x + 2, y + height - 1, width - 4, 1, colour);
+    }
+
+    /**
+     * A soft edge under something, so it reads as sitting above the game rather than
+     * printed on it.
+     *
+     * <p>Each ring is fainter than the last, which is what a shadow is; a single dark
+     * rectangle behind a panel just looks like a second panel.
+     */
+    public static void shadow(DrawContext context, int x, int y, int width, int height,
+                              int depth) {
+        for (int i = depth; i >= 1; i--) {
+            int alpha = Math.max(4, 40 / i);
+            box(context, x - i, y - i, width + i * 2, height + i * 2, (alpha << 24));
+        }
+    }
+
+    /** A one-pixel outline, for the panel that is being dragged. */
+    public static void outline(DrawContext context, int x, int y, int width, int height,
+                               int colour) {
+        box(context, x, y, width, 1, colour);
+        box(context, x, y + height - 1, width, 1, colour);
+        box(context, x, y, 1, height, colour);
+        box(context, x + width - 1, y, 1, height, colour);
     }
 
     public static void text(DrawContext context, TextRenderer renderer, String message,

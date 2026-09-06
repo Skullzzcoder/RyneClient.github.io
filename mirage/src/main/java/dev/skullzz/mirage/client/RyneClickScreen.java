@@ -71,7 +71,11 @@ public class RyneClickScreen extends Screen {
                 .add("Everything", RyneGui.Kind.TOGGLE,
                         () -> SelfFakes.setEnabled(!SelfFakes.enabled()), SelfFakes::enabled)
                 .add("Quiet", RyneGui.Kind.TOGGLE,
-                        () -> SelfFakes.setQuiet(!SelfFakes.quiet()), SelfFakes::quiet));
+                        () -> SelfFakes.setQuiet(!SelfFakes.quiet()), SelfFakes::quiet)
+                .add("Reset layout", RyneGui.Kind.ACTION, () -> {
+                    GUI.reset();
+                    RyneLayout.save(GUI);
+                }, null));
 
         GUI.add(new RyneGui.Panel("tracker", "Tracker", 12, 122)
                 .add("Tracking", RyneGui.Kind.TOGGLE,
@@ -247,13 +251,17 @@ public class RyneClickScreen extends Screen {
         if (!down && this.wasDown) {
             // Released without having moved: that was a click on the title, which folds
             // the panel away rather than leaving it where it was.
+            RyneGui.Panel wasDragging = GUI.dragged();
             RyneGui.Panel tapped = GUI.endDrag();
             if (tapped != null) {
                 tapped.open = !tapped.open;
-                RyneLayout.save(GUI);
-            } else {
-                RyneLayout.save(GUI);
+            } else if (wasDragging != null) {
+                // Lined up on release rather than while moving: snapping mid-drag makes
+                // the panel fight the pointer, which feels like a bug even when it is not.
+                GUI.snap(wasDragging, this.width, this.height);
+                GUI.clampAll(this.width, this.height);
             }
+            RyneLayout.save(GUI);
         }
         this.wasDown = down;
         if (down && GUI.isDragging()) GUI.dragTo(px, py, this.width, this.height);
@@ -270,7 +278,7 @@ public class RyneClickScreen extends Screen {
         for (RyneGui.Panel panel : GUI.panels()) paint(context, panel, theme);
 
         RyneDraw.text(context, this.textRenderer,
-                "drag a title to move it, click it to fold it away",
+                "drag a title to move it - it snaps to edges - click it to fold it away",
                 8, this.height - 12, RyneGui.fade(theme.dim, this.shown));
     }
 
@@ -278,21 +286,38 @@ public class RyneClickScreen extends Screen {
         int width = RyneGui.PANEL_WIDTH;
         int height = panel.height();
         float a = this.shown;
+        boolean held = GUI.dragged() == panel;
 
-        RyneDraw.box(context, panel.x, panel.y, width, height,
+        // Sitting above the game rather than printed on it.
+        RyneDraw.shadow(context, panel.x, panel.y, width, height, 3);
+        RyneDraw.rounded(context, panel.x, panel.y, width, height,
                 RyneGui.fade(theme.panel, a));
 
         // The title bar lifts toward the accent as the pointer crosses it, so it is
         // obvious which strip is the handle without a label saying so.
         int bar = RyneGui.blend(theme.card, theme.accent, panel.glow * 0.55f);
-        RyneDraw.box(context, panel.x, panel.y, width, RyneGui.TITLE_HEIGHT,
+        RyneDraw.gradient(context, panel.x + 1, panel.y + 1, width - 2,
+                RyneGui.TITLE_HEIGHT - 1,
+                RyneGui.fade(RyneGui.blend(bar, 0xFFFFFFFF, 0.06f), a),
                 RyneGui.fade(bar, a));
-        RyneDraw.box(context, panel.x, panel.y, 2, RyneGui.TITLE_HEIGHT,
+        RyneDraw.box(context, panel.x, panel.y + 2, 2, RyneGui.TITLE_HEIGHT - 4,
                 RyneGui.fade(theme.accent, a));
-        RyneDraw.text(context, this.textRenderer, panel.title, panel.x + 8, panel.y + 6,
+
+        if (held) {
+            RyneDraw.outline(context, panel.x, panel.y, width, height,
+                    RyneGui.fade(theme.accent, a));
+        }
+
+        RyneDraw.text(context, this.textRenderer, panel.title, panel.x + 9, panel.y + 6,
                 RyneGui.fade(theme.text, a));
-        RyneDraw.text(context, this.textRenderer, panel.open ? "-" : "+",
-                panel.x + width - 12, panel.y + 6, RyneGui.fade(theme.dim, a));
+        // A caret that turns as the panel opens, rather than two different characters:
+        // the shape moving is what says the click did something.
+        RyneDraw.box(context, panel.x + width - 14, panel.y + 9, 6, 1,
+                RyneGui.fade(theme.dim, a));
+        if (!panel.open) {
+            RyneDraw.box(context, panel.x + width - 12, panel.y + 7, 1, 5,
+                    RyneGui.fade(theme.dim, a * (1f - panel.openness)));
+        }
 
         if (panel.shut()) return;
 
@@ -313,11 +338,15 @@ public class RyneClickScreen extends Screen {
         RyneDraw.box(context, panel.x, y, RyneGui.PANEL_WIDTH, height,
                 RyneGui.fade(back, a));
 
-        // The slice of accent that slides in from the left as the pointer arrives. It is
-        // the whole reason this is drawn by hand rather than assembled from buttons.
-        int slice = Math.round(RyneGui.PANEL_WIDTH * row.glow * 0.06f);
-        if (slice > 0) {
-            RyneDraw.box(context, panel.x, y, slice, height,
+        // A wash of accent that grows from the left as the pointer arrives, fading out
+        // across the row. It is the whole reason this is drawn by hand rather than
+        // assembled from buttons.
+        if (row.glow > 0.01f) {
+            int reach = Math.round(RyneGui.PANEL_WIDTH * 0.55f * row.glow);
+            RyneDraw.gradient(context, panel.x, y, Math.max(1, reach), height,
+                    RyneGui.fade(RyneGui.blend(back, theme.accent, 0.28f * row.glow), a),
+                    RyneGui.fade(back, a));
+            RyneDraw.box(context, panel.x, y, Math.max(1, Math.round(2 * row.glow)), height,
                     RyneGui.fade(theme.accent, a));
         }
 

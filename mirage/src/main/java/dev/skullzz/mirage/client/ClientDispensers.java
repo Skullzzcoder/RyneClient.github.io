@@ -1347,6 +1347,10 @@ public final class ClientDispensers {
     public static void notice(String message) {
         while (notices.size() >= NOTICE_SIZE) notices.removeFirst();
         notices.addLast("t" + tick + "  " + message);
+
+        // Everything that already goes to the message log also gets four seconds on
+        // screen. One place, because a notice worth logging is a notice worth seeing.
+        Toasts.add(RyneDraw.trim(message, 46), Toasts.Kind.PLAIN);
     }
 
     /** What the mod has had to say lately, oldest first. */
@@ -1676,6 +1680,210 @@ public final class ClientDispensers {
 
     // -------------------------------------------------------------- persistence
 
+    private static String lastSetup = "";
+
+    public static String lastSetup() {
+        return lastSetup;
+    }
+
+    private static java.nio.file.Path setupFolder() {
+        return Disk.folder("mirage-setups");
+    }
+
+    /** The setups on disk, by name. */
+    public static java.util.List<String> setups() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (String file : Disk.list(setupFolder(), java.util.List.of(".json"))) {
+            out.add(file.substring(0, file.length() - 5));
+        }
+        return out;
+    }
+
+    /**
+     * Writes the rig you are on to its own file.
+     *
+     * <p>A setup is the shape of a game: its items, spread, payouts, sides and settings.
+     * What it deliberately does not carry is which dispensers in the world are watched --
+     * those are positions in one world, and a setup is meant to be laid out again
+     * somewhere else.
+     */
+    public static boolean saveSetup(String as) {
+        if (as == null || as.isEmpty()) {
+            lastSetup = "Give it a name.";
+            return false;
+        }
+
+        RigProfile profile = active();
+        JsonObject root = new JsonObject();
+        root.add("rig", writeProfile(profile));
+
+        try {
+            java.nio.file.Path file = setupFolder().resolve(as + ".json");
+            java.nio.file.Files.writeString(file, root.toString());
+            lastSetup = "written";
+            return true;
+        } catch (java.io.IOException | RuntimeException failure) {
+            lastSetup = "Could not write it: " + failure;
+            Mirage.LOGGER.warn("Mirage could not write a rig setup", failure);
+            return false;
+        }
+    }
+
+    /**
+     * Reads one back into a new rig and switches to it.
+     *
+     * <p>Into a new rig rather than over the one you are on: loading a setup should never
+     * be a way to lose the one you had, and a name that already exists gets a number.
+     */
+    public static boolean loadSetup(String as) {
+        java.nio.file.Path file = Disk.find(setupFolder(), as + ".json");
+        if (file == null) {
+            lastSetup = "No setup called '" + as + "'. There are: "
+                    + String.join(", ", setups());
+            return false;
+        }
+
+        try {
+            JsonElement parsed = JsonParser.parseString(java.nio.file.Files.readString(file));
+            if (!parsed.isJsonObject() || !parsed.getAsJsonObject().has("rig")) {
+                lastSetup = "'" + as + "' is not a rig setup.";
+                return false;
+            }
+
+            JsonObject json = parsed.getAsJsonObject().getAsJsonObject("rig").deepCopy();
+            String wanted = as;
+            for (int i = 2; profiles.containsKey(wanted); i++) wanted = as + i;
+            json.addProperty("name", wanted);
+
+            readProfile(json);
+            if (!profiles.containsKey(wanted)) {
+                lastSetup = "'" + as + "' could not be read back.";
+                return false;
+            }
+
+            use(wanted);
+            SelfFakes.save();
+            lastSetup = "loaded";
+            return true;
+        } catch (java.io.IOException | RuntimeException failure) {
+            lastSetup = "Could not read it: " + failure;
+            Mirage.LOGGER.warn("Mirage could not read a rig setup", failure);
+            return false;
+        }
+    }
+
+    /**
+     * One rig, written out.
+     *
+     * <p>Pulled out of the config save so a single setup can be written to its own file
+     * without a second copy of what a rig consists of -- two copies is how one of them
+     * ends up missing a field nobody notices until a setup comes back wrong.
+     */
+    private static JsonObject writeProfile(RigProfile profile) {
+        JsonObject json = new JsonObject();
+        json.addProperty("name", profile.name);
+        json.addProperty("presetIndex", profile.presetIndex());
+
+        JsonArray presets = new JsonArray();
+        for (FakeSpec spec : profile.presets) presets.add(SelfFakes.writeSpec(spec));
+        json.add("presets", presets);
+
+        JsonObject perDispenser = new JsonObject();
+        for (Map.Entry<BlockPos, FakeSpec> entry : profile.perDispenser.entrySet()) {
+            perDispenser.add(writePos(entry.getKey()), SelfFakes.writeSpec(entry.getValue()));
+        }
+        json.add("perDispenser", perDispenser);
+
+        JsonObject stock = new JsonObject();
+        for (Map.Entry<BlockPos, Map<Integer, FakeSpec>> entry : profile.stock.entrySet()) {
+            JsonObject slots = new JsonObject();
+            for (Map.Entry<Integer, FakeSpec> held : entry.getValue().entrySet()) {
+                slots.add(String.valueOf(held.getKey()), SelfFakes.writeSpec(held.getValue()));
+            }
+            stock.add(writePos(entry.getKey()), slots);
+        }
+        json.add("stock", stock);
+
+        if (profile.arrowTarget != null) {
+            json.addProperty("arrowTarget", profile.arrowTarget.x + ","
+                    + profile.arrowTarget.y + "," + profile.arrowTarget.z);
+        }
+
+        // Written for every rig. A coin flip played with shulker boxes wants its answer
+        // standing on the ground as much as anything else does, and the setting once
+        // lived inside one game's own block, which threw it away with that game.
+        json.addProperty("place", profile.placeOutput);
+        json.addProperty("breakSeconds", profile.breakSeconds);
+
+        // The queue is worth keeping: it is a run you set up deliberately, and losing
+        // it on a relog would be losing the thing you just spent a minute arranging.
+        if (!profile.queue.isEmpty()) {
+            JsonArray queued = new JsonArray();
+            for (String entry : profile.queue.entries()) queued.add(entry);
+            json.add("queue", queued);
+        }
+
+        // Written whether it is on or off. Writing it only when on made a rig that
+        // had been turned off look identical to one that had never heard of the game,
+        // and there is no way to tell those apart on the way back in.
+        if (profile.blackjack) {
+            JsonObject cards = new JsonObject();
+            cards.addProperty("cards", profile.cards);
+            cards.addProperty("each", profile.cardEach);
+            cards.addProperty("item", profile.slipItem);
+            cards.addProperty("winner", profile.winner);
+
+            JsonObject sides = new JsonObject();
+            for (Map.Entry<BlockPos, String> entry : profile.sides.entrySet()) {
+                sides.addProperty(writePos(entry.getKey()), entry.getValue());
+            }
+            cards.add("sides", sides);
+            json.add("blackjack", cards);
+        }
+
+        if (profile.paper || profile.name.equals("paper")) {
+            JsonObject paper = new JsonObject();
+            paper.addProperty("on", profile.paper);
+            paper.addProperty("winner", profile.winner);
+            paper.addProperty("item", profile.slipItem);
+            paper.addProperty("numbers", profile.numbers);
+            paper.addProperty("house", profile.house);
+            paper.addProperty("ties", profile.tieChance);
+
+            JsonObject sides = new JsonObject();
+            for (Map.Entry<BlockPos, String> entry : profile.sides.entrySet()) {
+                sides.addProperty(writePos(entry.getKey()), entry.getValue());
+            }
+            paper.add("sides", sides);
+            json.add("paper", paper);
+        }
+
+        if (profile.mix) {
+            JsonObject mix = new JsonObject();
+            JsonArray counts = new JsonArray();
+            JsonArray payouts = new JsonArray();
+            for (int i = 0; i < profile.presets.size(); i++) {
+                counts.add(profile.mixCount(i));
+                payouts.add(profile.mixPayout(i));
+            }
+            mix.add("counts", counts);
+            mix.add("payouts", payouts);
+            json.add("mix", mix);
+        }
+
+        if (profile.roulette) {
+            JsonObject roulette = new JsonObject();
+            roulette.addProperty("chambers", profile.chambers);
+            roulette.addProperty("bulletAt", profile.bulletAt);
+            roulette.addProperty("shot", profile.shot);
+            roulette.addProperty("manual", profile.manualTrigger);
+            if (profile.bullet != null) roulette.add("bullet", SelfFakes.writeSpec(profile.bullet));
+            if (profile.blank != null) roulette.add("blank", SelfFakes.writeSpec(profile.blank));
+            json.add("roulette", roulette);
+        }
+        return json;
+    }
+
     public static void save(JsonObject root) {
         JsonArray positions = new JsonArray();
         for (BlockPos pos : watched) positions.add(writePos(pos));
@@ -1683,108 +1891,7 @@ public final class ClientDispensers {
 
         JsonArray profileJson = new JsonArray();
         for (RigProfile profile : profiles.values()) {
-            JsonObject json = new JsonObject();
-            json.addProperty("name", profile.name);
-            json.addProperty("presetIndex", profile.presetIndex());
-
-            JsonArray presets = new JsonArray();
-            for (FakeSpec spec : profile.presets) presets.add(SelfFakes.writeSpec(spec));
-            json.add("presets", presets);
-
-            JsonObject perDispenser = new JsonObject();
-            for (Map.Entry<BlockPos, FakeSpec> entry : profile.perDispenser.entrySet()) {
-                perDispenser.add(writePos(entry.getKey()), SelfFakes.writeSpec(entry.getValue()));
-            }
-            json.add("perDispenser", perDispenser);
-
-            JsonObject stock = new JsonObject();
-            for (Map.Entry<BlockPos, Map<Integer, FakeSpec>> entry : profile.stock.entrySet()) {
-                JsonObject slots = new JsonObject();
-                for (Map.Entry<Integer, FakeSpec> held : entry.getValue().entrySet()) {
-                    slots.add(String.valueOf(held.getKey()), SelfFakes.writeSpec(held.getValue()));
-                }
-                stock.add(writePos(entry.getKey()), slots);
-            }
-            json.add("stock", stock);
-
-            if (profile.arrowTarget != null) {
-                json.addProperty("arrowTarget", profile.arrowTarget.x + ","
-                        + profile.arrowTarget.y + "," + profile.arrowTarget.z);
-            }
-
-            // Written for every rig. A coin flip played with shulker boxes wants its answer
-            // standing on the ground as much as anything else does, and the setting once
-            // lived inside one game's own block, which threw it away with that game.
-            json.addProperty("place", profile.placeOutput);
-            json.addProperty("breakSeconds", profile.breakSeconds);
-
-            // The queue is worth keeping: it is a run you set up deliberately, and losing
-            // it on a relog would be losing the thing you just spent a minute arranging.
-            if (!profile.queue.isEmpty()) {
-                JsonArray queued = new JsonArray();
-                for (String entry : profile.queue.entries()) queued.add(entry);
-                json.add("queue", queued);
-            }
-
-            // Written whether it is on or off. Writing it only when on made a rig that
-            // had been turned off look identical to one that had never heard of the game,
-            // and there is no way to tell those apart on the way back in.
-            if (profile.blackjack) {
-                JsonObject cards = new JsonObject();
-                cards.addProperty("cards", profile.cards);
-                cards.addProperty("each", profile.cardEach);
-                cards.addProperty("item", profile.slipItem);
-                cards.addProperty("winner", profile.winner);
-
-                JsonObject sides = new JsonObject();
-                for (Map.Entry<BlockPos, String> entry : profile.sides.entrySet()) {
-                    sides.addProperty(writePos(entry.getKey()), entry.getValue());
-                }
-                cards.add("sides", sides);
-                json.add("blackjack", cards);
-            }
-
-            if (profile.paper || profile.name.equals("paper")) {
-                JsonObject paper = new JsonObject();
-                paper.addProperty("on", profile.paper);
-                paper.addProperty("winner", profile.winner);
-                paper.addProperty("item", profile.slipItem);
-                paper.addProperty("numbers", profile.numbers);
-                paper.addProperty("house", profile.house);
-                paper.addProperty("ties", profile.tieChance);
-
-                JsonObject sides = new JsonObject();
-                for (Map.Entry<BlockPos, String> entry : profile.sides.entrySet()) {
-                    sides.addProperty(writePos(entry.getKey()), entry.getValue());
-                }
-                paper.add("sides", sides);
-                json.add("paper", paper);
-            }
-
-            if (profile.mix) {
-                JsonObject mix = new JsonObject();
-                JsonArray counts = new JsonArray();
-                JsonArray payouts = new JsonArray();
-                for (int i = 0; i < profile.presets.size(); i++) {
-                    counts.add(profile.mixCount(i));
-                    payouts.add(profile.mixPayout(i));
-                }
-                mix.add("counts", counts);
-                mix.add("payouts", payouts);
-                json.add("mix", mix);
-            }
-
-            if (profile.roulette) {
-                JsonObject roulette = new JsonObject();
-                roulette.addProperty("chambers", profile.chambers);
-                roulette.addProperty("bulletAt", profile.bulletAt);
-                roulette.addProperty("shot", profile.shot);
-                roulette.addProperty("manual", profile.manualTrigger);
-                if (profile.bullet != null) roulette.add("bullet", SelfFakes.writeSpec(profile.bullet));
-                if (profile.blank != null) roulette.add("blank", SelfFakes.writeSpec(profile.blank));
-                json.add("roulette", roulette);
-            }
-            profileJson.add(json);
+            profileJson.add(writeProfile(profile));
         }
         root.add("profiles", profileJson);
         root.addProperty("activeProfile", activeName);

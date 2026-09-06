@@ -89,6 +89,38 @@ public class Harness {
         check("the same holds vertically", RyneGui.clampY(-5, 20, 400) == 0
                 && RyneGui.clampY(500, 20, 400) == 380);
 
+        // --- snapping: near enough lines up, far enough is left alone
+        check("far away is untouched", RyneGui.snapTo(50, new int[] { 0, 200 }) == 50);
+        check("near an edge snaps to it", RyneGui.snapTo(3, new int[] { 0, 200 }) == 0);
+        check("exactly at the limit still snaps",
+                RyneGui.snapTo(RyneGui.SNAP, new int[] { 0 }) == 0);
+        check("one past the limit does not",
+                RyneGui.snapTo(RyneGui.SNAP + 1, new int[] { 0 }) == RyneGui.SNAP + 1);
+        // Nearest, not first: order of candidates must not decide the answer.
+        check("the nearest wins, whatever the order",
+                RyneGui.snapTo(6, new int[] { 0, 8 }) == 8
+                && RyneGui.snapTo(6, new int[] { 8, 0 }) == 8);
+        check("no candidates changes nothing", RyneGui.snapTo(42, new int[0]) == 42);
+
+        RyneGui snapping = new RyneGui();
+        RyneGui.Panel one = snapping.add(new RyneGui.Panel("one", "One", 0, 0));
+        one.add("r", RyneGui.Kind.ACTION, () -> {}, null);
+        RyneGui.Panel two = snapping.add(new RyneGui.Panel("two", "Two", 200, 200));
+        two.add("r", RyneGui.Kind.ACTION, () -> {}, null);
+
+        two.x = RyneGui.PANEL_WIDTH + 3;
+        two.y = 4;
+        snapping.snap(two, 1000, 600);
+        check("a panel snaps beside another", two.x == RyneGui.PANEL_WIDTH);
+        check("and to its top edge", two.y == 0);
+        check("a panel never snaps to itself", one.x == 0 && one.y == 0);
+
+        // --- resetting puts them back where they were built
+        two.x = 500; two.y = 400; two.open = false;
+        snapping.reset();
+        check("reset restores the position", two.x == 200 && two.y == 200);
+        check("and opens it again", two.open);
+
         // --- easing is measured in seconds, not frames
         float slow = RyneGui.ease(0f, 1f, 14f, 1f / 30f);
         float fast = RyneGui.ease(0f, 1f, 14f, 1f / 60f);

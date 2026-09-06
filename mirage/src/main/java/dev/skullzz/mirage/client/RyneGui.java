@@ -60,11 +60,17 @@ public final class RyneGui {
         public float openness = 1f;
         public float glow;
 
+        /** Where it was built, so a layout can be put back. */
+        public final int homeX;
+        public final int homeY;
+
         public Panel(String id, String title, int x, int y) {
             this.id = id;
             this.title = title;
             this.x = x;
             this.y = y;
+            this.homeX = x;
+            this.homeY = y;
         }
 
         public Panel add(String label, Kind kind, Runnable action, BooleanSupplier state) {
@@ -183,6 +189,73 @@ public final class RyneGui {
         this.dragging.x = x;
         this.dragging.y = y;
         clamp(this.dragging, screenWidth, screenHeight);
+    }
+
+    /** How close a panel has to come to an edge before it snaps to it. */
+    public static final int SNAP = 8;
+
+    /**
+     * The nearest thing worth lining up with, or the value unchanged.
+     *
+     * <p>Snapping is the difference between a menu you arrange and one you fiddle with.
+     * Nearest rather than first, because two candidates a pixel apart would otherwise be
+     * decided by the order they happen to be checked in.
+     */
+    public static int snapTo(int value, int[] candidates) {
+        int best = value;
+        int bestGap = SNAP + 1;
+
+        for (int candidate : candidates) {
+            int gap = Math.abs(candidate - value);
+            if (gap <= SNAP && gap < bestGap) {
+                bestGap = gap;
+                best = candidate;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Where a dragged panel should land: the screen edges, and the edges of every other
+     * panel, so a column of them lines up without being nudged into place.
+     */
+    public void snap(Panel panel, int screenWidth, int screenHeight) {
+        List<Integer> xs = new ArrayList<>();
+        List<Integer> ys = new ArrayList<>();
+
+        xs.add(0);
+        xs.add(screenWidth - PANEL_WIDTH);
+        xs.add((screenWidth - PANEL_WIDTH) / 2);
+        ys.add(0);
+        ys.add(screenHeight - panel.height());
+
+        for (Panel other : this.panels) {
+            if (other == panel) continue;
+            xs.add(other.x);
+            xs.add(other.x + PANEL_WIDTH);
+            xs.add(other.x - PANEL_WIDTH);
+            ys.add(other.y);
+            ys.add(other.y + other.height());
+            ys.add(other.y - panel.height());
+        }
+
+        panel.x = snapTo(panel.x, toArray(xs));
+        panel.y = snapTo(panel.y, toArray(ys));
+    }
+
+    private static int[] toArray(List<Integer> values) {
+        int[] out = new int[values.size()];
+        for (int i = 0; i < out.length; i++) out[i] = values.get(i);
+        return out;
+    }
+
+    /** Puts every panel back where it was built, for a layout that has got away from you. */
+    public void reset() {
+        for (Panel panel : this.panels) {
+            panel.x = panel.homeX;
+            panel.y = panel.homeY;
+            panel.open = true;
+        }
     }
 
     /**
