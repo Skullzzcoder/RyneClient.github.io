@@ -55,7 +55,10 @@ public final class Hud {
     }
 
     private static final List<Element> ELEMENTS = new ArrayList<>(List.of(
-            new Element("tracker", "Tracker bar", 0, 4, false),
+            // On by default. It draws nothing while there is nothing to say, so it costs
+            // nothing when idle -- and having it default to off meant turning tracking on
+            // produced no visible change at all, which reads as the tracker not working.
+            new Element("tracker", "Tracker bar", 0, 4, true),
             new Element("coords", "Coordinates", 4, 4, false),
             new Element("compass", "Waypoint compass", 0, 22, false),
             new Element("clock", "Session time", 4, 16, false),
@@ -140,6 +143,13 @@ public final class Hud {
         lastFrame = now;
         if (!editing) Toasts.tick(seconds);
 
+        if (testing()) {
+            RyneDraw.box(context, width / 2 - 90, height / 2 - 10, 180, 20, 0xC0000000);
+            RyneDraw.box(context, width / 2 - 90, height / 2 - 10, 3, 20, 0xFF7FD18B);
+            RyneDraw.text(context, client.textRenderer, "Ryne: the HUD can draw",
+                    width / 2 - 80, height / 2 - 4, 0xFF7FD18B);
+        }
+
         for (Element element : ELEMENTS) {
             if (!element.on && !editing) continue;
             element.x = RyneGui.clampX(element.x, 40, width);
@@ -185,8 +195,10 @@ public final class Hud {
 
     /** What the bar says, or null when there is nothing worth a line. */
     static String trackerLine() {
-        if (!ChatHook.attached()) return "tracker: cannot read chat";
+        // Nothing at all while the tracker is off: a mod that puts a line on your screen
+        // about a feature you never asked for is a mod you turn off.
         if (!Sessions.tracking()) return null;
+        if (!ChatHook.attached()) return "tracker: cannot read chat";
 
         Tracker.Session session = Sessions.current();
         if (session == null) return "tracker: no session";
@@ -314,6 +326,24 @@ public final class Hud {
                     RyneGui.fade(theme.text, presence));
             y += 17;
         }
+    }
+
+    /** Until this time, everything is drawn with a marker on it. Set by the test. */
+    private static long testUntil;
+
+    /**
+     * Proves whether anything can be drawn at all.
+     *
+     * <p>The one question worth answering first: the tracker showing nothing and the HUD
+     * being unable to draw look identical from the outside, and they need opposite fixes.
+     */
+    public static void test(int seconds) {
+        testUntil = System.currentTimeMillis() + seconds * 1000L;
+        Toasts.add("HUD test: if you can read this, the HUD works", Toasts.Kind.GOOD);
+    }
+
+    private static boolean testing() {
+        return System.currentTimeMillis() < testUntil;
     }
 
     // ----------------------------------------------------------------- persistence

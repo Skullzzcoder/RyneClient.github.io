@@ -21,10 +21,20 @@ public final class ChatHook {
     /** Where the chat events have lived. Tried in order. */
     private static final String[] EVENT_CLASSES = {
         "net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents",
+        // Where these lived before, and where a future one might: tried in turn so a name
+        // that moves is a message rather than a mod that has quietly gone deaf.
+        "net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents",
     };
 
-    /** The fields on it worth subscribing to: a server message, and a chat message. */
-    private static final String[] EVENT_FIELDS = { "GAME", "CHAT", "MODIFY_GAME" };
+    /**
+     * The fields worth subscribing to, in order of preference.
+     *
+     * <p>GAME carries system messages, which is what a payment line is on most servers.
+     * CHAT carries what players type. ALLOW_GAME and ALLOW_CHAT are the filtering forms,
+     * which see the same text and are answered with true so nothing is swallowed.
+     */
+    private static final String[] EVENT_FIELDS =
+            { "GAME", "CHAT", "ALLOW_GAME", "ALLOW_CHAT", "MODIFY_GAME" };
 
     private static boolean attached;
     private static String reason = "not attached yet";
@@ -61,6 +71,7 @@ public final class ChatHook {
                 if (result.ok) {
                     attached = true;
                     reason = result.reason;
+                    Mirage.LOGGER.info("Mirage is listening to chat: {}", reason);
                     return;
                 }
                 if (tried.length() > 0) tried.append("; ");

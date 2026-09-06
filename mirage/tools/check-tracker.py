@@ -9,7 +9,7 @@ line being anchored, anyone typing "you paid Bob $10000000" in public chat lands
 tally, and a tally strangers can write to is worse than no tally at all.
 
 Run for real: the parser has no Minecraft in it, so it compiles and runs here."""
-import io, json, os, shutil, subprocess, sys, tempfile
+import io, json, os, re, shutil, subprocess, sys, tempfile
 
 SRC = "src/main/java/dev/skullzz/mirage/client/Tracker.java"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +40,13 @@ CASES = [
     ("[Trade] Bob paid you $10",                         "IN Bob 1000"),
     ("Skullzz paid you $1.50",                           "IN Skullzz 150"),
     ("Skullzz paid you $0.01",                           "IN Skullzz 1"),
+
+    # Other wordings of the same thing, including the two that put the amount before the
+    # name. Read the wrong way round, those hand back the amount as the player.
+    ("Notch sent you $1k",                               "IN Notch 100000"),
+    ("You received $750 from Alex",                      "IN Alex 75000"),
+    ("You sent $300 to Bob",                             "OUT Bob 30000"),
+    ("You have sent Bob $2.5M",                          "OUT Bob 250000000"),
 
     # Written by other people. None of these may land in the tally.
     ("Someone whispered: you paid Bob $10 for it",       "-"),
@@ -78,8 +85,26 @@ finally:
 
 # The direction has to be decided before the amount is: a line containing both shapes read
 # the wrong way turns money out into money in, which is worse than missing it.
-check("money out is tested for first", source.index("OUT.matcher") < source.index("IN.matcher"))
-check("both patterns are anchored", source.count('Pattern.compile(\n            "^') == 2)
+check("money out is tested for first",
+      source.index("match(clean, out,") < source.index("match(clean, in,"))
+
+# Every wording, default or configured, must be anchored: chat is written by other people,
+# and without the anchor anyone typing "you paid Bob $10000000" lands in the tally.
+for name in ("DEFAULT_IN", "DEFAULT_OUT"):
+    block = re.search(r"List<String> %s = List\.of\((.*?)\);" % name, source, re.S)
+    check("%s exists" % name, block is not None)
+    if block:
+        wordings = re.findall(r'"(.*?)"', block.group(1))
+        check("%s has more than one wording" % name, len(wordings) >= 2)
+        check("every %s wording is anchored" % name,
+              all(w.startswith("^") for w in wordings))
+
+# The order of player and amount differs between wordings, so it is read off the pattern
+# rather than assumed -- assuming one order reads the amount as the player's name.
+check("the order is taken from the pattern", "playerFirst(" in source)
+check("a bad pattern costs one wording, not all",
+      "catch (RuntimeException bad)" in source and "lastBad" in source)
+check("the wordings can be replaced without a rebuild", "setPatterns(" in source)
 
 # ------------------------------------------------------- the rest of the chain
 sess = io.open("src/main/java/dev/skullzz/mirage/client/Sessions.java",
@@ -141,7 +166,20 @@ check("status says how to fix each thing off",
       "/fake track on" in status and "/fake track start" in status)
 check("turning it on says if chat cannot be read", "ChatHook.attached()" in client)
 
-for sub in ("on", "off", "start", "end", "rake", "alert"):
+# Counting nothing and a quiet night look identical from the outside, so there has to be a
+# way to see the lines as they really arrived rather than guessing the wording a third time.
+offer = body(sess, "public static Tracker.Payment offer(String line) {")
+check("chat can be captured", "setCapturing(" in sess)
+check("captured before the tracking switch, not after",
+      "capturing" in offer and offer.index("capturing") < offer.index("if (!tracking)"))
+check("the lines are written out", "writeRaw()" in sess)
+check("and marked with what was made of them", "[+]" in client and "[ ]" in client)
+check("the status says where the wordings live", "paymentIn / paymentOut" in client)
+check("and points at the capture when nothing counts", "/fake track raw" in client)
+check("an empty list in the file falls back to the defaults",
+      "out.isEmpty() ? new ArrayList<>(fallback)" in sess)
+
+for sub in ("on", "off", "start", "end", "rake", "alert", "raw", "lines"):
     check("there is a track %s command" % sub, 'literal("%s")' % sub in client)
 
 print("FAILED:\n  " + "\n  ".join(fails) if fails else

@@ -59,13 +59,85 @@ public final class Tracker {
      * can be written to by strangers is worse than no tally. A leading [tag] the server
      * adds is dropped first, since that is a prefix and not a sentence.
      */
-    private static final Pattern IN = Pattern.compile(
+    /**
+     * The wordings a payment can arrive in.
+     *
+     * <p>Defaults here, editable in the config. These are a guess about how one server
+     * words things, and a guess that is wrong makes the tracker count nothing and say
+     * nothing -- which looks exactly like a quiet night. Correcting them without a rebuild
+     * is the difference between a five-second fix and waiting for a new jar.
+     *
+     * <p>Each needs three groups: the player, the number and the scale letter, in whatever
+     * order the wording puts them. All are anchored to the start of the line, because chat
+     * is written by other people and without the anchor anyone typing "you paid Bob
+     * $10000000" lands in your tally.
+     */
+    public static final List<String> DEFAULT_IN = List.of(
             "^([A-Za-z0-9_]{3,16})\\s+(?:has\\s+)?paid\\s+you\\s+\\$?([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
-            Pattern.CASE_INSENSITIVE);
+            "^([A-Za-z0-9_]{3,16})\\s+(?:has\\s+)?sent\\s+you\\s+\\$?([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
+            "^you\\s+(?:have\\s+)?received\\s+\\$?([0-9][0-9,.]*)\\s*([kmbtKMBT]?)\\s+from\\s+([A-Za-z0-9_]{3,16})");
 
-    private static final Pattern OUT = Pattern.compile(
+    public static final List<String> DEFAULT_OUT = List.of(
             "^you\\s+(?:have\\s+)?paid\\s+([A-Za-z0-9_]{3,16})\\s+\\$?([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
-            Pattern.CASE_INSENSITIVE);
+            "^you\\s+(?:have\\s+)?sent\\s+([A-Za-z0-9_]{3,16})\\s+\\$?([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
+            "^you\\s+(?:have\\s+)?sent\\s+\\$?([0-9][0-9,.]*)\\s*([kmbtKMBT]?)\\s+to\\s+([A-Za-z0-9_]{3,16})");
+
+    private static String lastBad = "";
+
+    public static String lastBad() {
+        return lastBad;
+    }
+
+    static List<Pattern> compile(List<String> sources) {
+        List<Pattern> made = new ArrayList<>();
+        for (String source : sources) {
+            try {
+                made.add(Pattern.compile(source, Pattern.CASE_INSENSITIVE));
+            } catch (RuntimeException bad) {
+                // A pattern that will not compile is left out rather than taking the rest
+                // with it: one bad line in a config should cost one wording, not all.
+                lastBad = source + " -> " + bad.getMessage();
+            }
+        }
+        return made;
+    }
+
+    /**
+     * Whether a wording names the player before the number.
+     *
+     * <p>"Bob paid you $10" and "You received $10 from Bob" carry the same three things in
+     * a different order, and a reader that assumed one order would read the amount as the
+     * name. Decided from the pattern itself rather than a flag somebody has to remember.
+     */
+    static List<Boolean> playerFirst(List<String> sources) {
+        List<Boolean> order = new ArrayList<>();
+        for (String source : sources) {
+            int name = source.indexOf("A-Za-z0-9_");
+            int number = source.indexOf("[0-9][0-9,.]");
+            order.add(name >= 0 && (number < 0 || name < number));
+        }
+        return order;
+    }
+
+    private static List<Pattern> in = compile(DEFAULT_IN);
+    private static List<Pattern> out = compile(DEFAULT_OUT);
+    private static List<Boolean> inPlayerFirst = playerFirst(DEFAULT_IN);
+    private static List<Boolean> outPlayerFirst = playerFirst(DEFAULT_OUT);
+
+    /** Replaces the wordings, falling back to the defaults for an empty list. */
+    public static void setPatterns(List<String> incoming, List<String> outgoing) {
+        List<String> useIn = incoming == null || incoming.isEmpty() ? DEFAULT_IN : incoming;
+        List<String> useOut = outgoing == null || outgoing.isEmpty() ? DEFAULT_OUT : outgoing;
+
+        in = compile(useIn);
+        out = compile(useOut);
+        inPlayerFirst = playerFirst(useIn);
+        outPlayerFirst = playerFirst(useOut);
+    }
+
+    public static int wordings() {
+        return in.size() + out.size();
+    }
 
     /** A leading [tag] or (tag) the server puts in front, and nothing else. */
     private static final Pattern LEADING_TAG = Pattern.compile("^(?:\\[[^\\]]{0,24}\\]|\\([^)]{0,24}\\))\\s*");
@@ -84,16 +156,23 @@ public final class Tracker {
         if (line == null || line.isEmpty()) return null;
         String clean = strip(line);
 
-        Matcher out = OUT.matcher(clean);
-        if (out.find()) {
-            Long cents = amount(out.group(2), out.group(3));
-            return cents == null ? null : new Payment(out.group(1), cents, false, at);
-        }
+        Payment going = match(clean, out, outPlayerFirst, false, at);
+        if (going != null) return going;
+        return match(clean, in, inPlayerFirst, true, at);
+    }
 
-        Matcher in = IN.matcher(clean);
-        if (in.find()) {
-            Long cents = amount(in.group(2), in.group(3));
-            return cents == null ? null : new Payment(in.group(1), cents, true, at);
+    /** The first of these wordings that fits, read the way its own order says. */
+    private static Payment match(String line, List<Pattern> patterns, List<Boolean> order,
+                                 boolean incoming, long at) {
+        for (int i = 0; i < patterns.size(); i++) {
+            Matcher found = patterns.get(i).matcher(line);
+            if (!found.find() || found.groupCount() < 3) continue;
+
+            boolean nameFirst = i >= order.size() || order.get(i);
+            String player = found.group(nameFirst ? 1 : 3);
+            Long cents = amount(found.group(nameFirst ? 2 : 1),
+                    found.group(nameFirst ? 3 : 2));
+            if (cents != null) return new Payment(player, cents, incoming, at);
         }
         return null;
     }

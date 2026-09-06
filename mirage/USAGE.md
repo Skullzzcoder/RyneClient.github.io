@@ -743,10 +743,33 @@ It shows session net, in, out, wins and losses, the current run of payments out,
 worst run and the best, recent payments, and rakeback owed per player at whatever
 percentage you set.
 
-> **Only DonutSMP's payment lines.** `Player paid you $X` and `You paid Player $X`, and
-> both must be at the **start** of the line. Chat is written by other people: without that
-> anchor, anyone typing "you paid Bob $10000000" in public chat would land in your tally.
-> A leading `[tag]` from the server is allowed; a sentence in front of it is not.
+### If it is counting nothing
+
+Counting nothing and a quiet night look identical, so there is a way to see the lines as
+they really arrived:
+
+    /fake track raw        start recording every chat line
+    (do a /pay)
+    /fake track lines      show them, marked with what was made of each
+
+`[+]` means the tracker read it as a payment, `[ ]` means it did not. All of them are also
+written to `config/mirage-chat.txt`.
+
+**The wordings are a guess, and you can correct them.** Six are built in — `Player paid
+you $X`, `Player sent you $X`, `You received $X from Player`, and the three outgoing
+forms — but if your server words it differently, edit `paymentIn` and `paymentOut` in
+`config/mirage-sessions.json` and restart. No rebuild.
+
+Each needs three capture groups: **the player**, **the number**, **the scale letter**
+(k/m/b/t), in whatever order the wording puts them — the order is read off the pattern
+itself, so `You received $750 from Alex` works as well as `Alex paid you $750`. `/fake
+track` says how many wordings are loaded and names any that would not compile.
+
+> **Every wording must start with `^`.** Chat is written by other people: without that
+> anchor, anyone typing "you paid Bob $10000000" in public chat lands in your tally. A
+> leading `[tag]` from the server is stripped first; a sentence in front of it is not.
+> Clearing the list in the file falls back to the defaults rather than leaving the tracker
+> unable to read anything.
 
 > **Money is held in cents, not dollars.** `$1.5M`, `$1,500` and `$1.50` are three
 > different numbers and two of them look alike. A line it cannot read exactly is skipped

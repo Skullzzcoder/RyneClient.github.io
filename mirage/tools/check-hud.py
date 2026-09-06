@@ -110,6 +110,31 @@ check("a failure keeps its reason", "lastExport = failure.toString();" in sess)
 for command in ("hud", "wp", "export"):
     check("there is a %s command" % command, 'literal("%s")' % command in client)
 
+# ------------------------------------------------- switched on means visible
+# Turning tracking on with the bar switched off produced no visible change whatever,
+# which from the outside is indistinguishable from the tracker not working.
+check("the tracker bar is on by default",
+      'new Element("tracker", "Tracker bar", 0, 4, true)' in hud)
+turn_on = body(sess, "public static void setTracking(boolean on) {")
+check("turning tracking on turns the bar on", 'Hud.byId("tracker")' in turn_on
+      and "bar.on = true;" in turn_on)
+# ...but only when switching on: this must not undo a bar deliberately switched off.
+check("and only when switching on", "if (on) {" in turn_on)
+
+# Nothing on screen about a feature that is off.
+line = body(hud, "static String trackerLine() {")
+check("the bar says nothing while the tracker is off",
+      line.index("Sessions.tracking()") < line.index("ChatHook.attached()"))
+
+# A tracker showing nothing and a HUD that cannot draw look identical and need opposite
+# fixes, so there has to be a way to tell them apart from inside the game.
+check("there is a way to prove the HUD can draw", "Hud.test(" in client
+      and 'literal("test")' in client)
+check("the test refuses when the hook never attached", "cannot draw at all" in client)
+check("the test says what is switched on", "then click one" in client)
+check("the tracker status leads with both hooks",
+      "CANNOT DRAW" in client and "NOT READING" in client)
+
 print("FAILED:\n  " + "\n  ".join(fails) if fails else
       "the compass agrees with Minecraft's yaw on every cardinal and both wrap cases; "
       "waypoints are per world, the HUD shares one clamp, and the export is quoted")

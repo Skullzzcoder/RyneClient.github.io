@@ -290,6 +290,15 @@ public class MirageClient implements ClientModInitializer {
                                     Sessions.stop();
                                     return feedback(context, "Session ended at " + net + ".");
                                 }))
+                                .then(ClientCommandManager.literal("raw").executes(context -> {
+                                    Sessions.setCapturing(!Sessions.capturing());
+                                    return feedback(context, Sessions.capturing()
+                                            ? "Recording every chat line. Do a /pay, then "
+                                                    + "/fake track lines."
+                                            : "Stopped recording.");
+                                }))
+                                .then(ClientCommandManager.literal("lines")
+                                        .executes(MirageClient::showRawLines))
                                 .then(ClientCommandManager.literal("rake")
                                         .then(ClientCommandManager.argument("percent",
                                                         DoubleArgumentType.doubleArg(0, 50))
@@ -311,11 +320,15 @@ public class MirageClient implements ClientModInitializer {
                                                             + "after " + Sessions.alertAfter()
                                                             + " out in a row.");
                                                 }))))
-                        .then(ClientCommandManager.literal("hud").executes(context -> {
-                            MinecraftClient client = MinecraftClient.getInstance();
-                            client.execute(() -> client.setScreen(new RyneHudScreen()));
-                            return 1;
-                        }))
+                        .then(ClientCommandManager.literal("hud")
+                                .executes(context -> {
+                                    MinecraftClient client = MinecraftClient.getInstance();
+                                    client.execute(() ->
+                                            client.setScreen(new RyneHudScreen()));
+                                    return 1;
+                                })
+                                .then(ClientCommandManager.literal("test")
+                                        .executes(MirageClient::hudTest)))
                         .then(ClientCommandManager.literal("wp")
                                 .executes(MirageClient::waypointList)
                                 .then(ClientCommandManager.literal("add")
@@ -1604,10 +1617,83 @@ public class MirageClient implements ClientModInitializer {
      * zero if chat cannot be read, and a zero that means "nothing happened" looks exactly
      * like a zero that means "nothing was heard".
      */
+    /**
+     * Answers the one question that comes first.
+     *
+     * <p>A tracker showing nothing and a HUD that cannot draw look identical from the
+     * outside and need opposite fixes. This puts something on the screen for five seconds:
+     * if it appears, drawing works and the problem is upstream of it.
+     */
+    /**
+     * The chat lines as they really arrived.
+     *
+     * <p>Printed and written to a file. The patterns that read a payment were written from
+     * an assumption about how the server words them, and if that assumption is wrong the
+     * tracker counts nothing and says nothing -- which looks exactly like a quiet night.
+     * This is how the assumption gets replaced with the real thing.
+     */
+    private static int showRawLines(CommandContext<FabricClientCommandSource> context) {
+        java.util.List<String> lines = Sessions.rawLines();
+        if (lines.isEmpty()) {
+            return error(context, Sessions.capturing()
+                    ? "Nothing recorded yet. Do a /pay, or wait for one, then try again."
+                    : "Not recording. /fake track raw turns it on first.");
+        }
+
+        StringBuilder out = new StringBuilder("Last " + Math.min(12, lines.size())
+                + " of " + lines.size() + " lines:");
+        for (int i = Math.max(0, lines.size() - 12); i < lines.size(); i++) {
+            String line = lines.get(i);
+            // Marked with what the tracker made of it, so a line that should have counted
+            // and did not is obvious at a glance rather than by reading them all.
+            Tracker.Payment read = Tracker.read(line, 0L);
+            out.append("\n  ").append(read == null ? "[ ] " : "[+] ")
+                    .append(RyneDraw.trim(line, 70));
+        }
+
+        java.nio.file.Path file = Sessions.writeRaw();
+        if (file != null) out.append("\n\nAll of them written to ").append(file);
+        out.append("\n[+] means the tracker read it as a payment, [ ] means it did not.");
+
+        context.getSource().sendFeedback(Text.literal(out.toString()));
+        return lines.size();
+    }
+
+    private static int hudTest(CommandContext<FabricClientCommandSource> context) {
+        if (!Hud.attached()) {
+            return error(context, "The HUD cannot draw at all: " + Hud.reason()
+                    + "\nNothing will appear on screen until that is sorted.");
+        }
+
+        Hud.test(5);
+        StringBuilder out = new StringBuilder("Watch the middle of the screen for 5 seconds.");
+        out.append("\n  If a green line appears, the HUD works.");
+        out.append("\n  If nothing appears, the HUD event attached but is not being called.");
+        out.append("\n\nHUD hook   ").append(Hud.reason());
+        out.append("\nChat hook  ").append(ChatHook.attached()
+                ? ChatHook.reason() : "NOT READING  <-- " + ChatHook.reason());
+        out.append("\nSwitched on ");
+
+        boolean any = false;
+        for (Hud.Element element : Hud.elements()) {
+            if (!element.on) continue;
+            out.append(any ? ", " : "").append(element.label);
+            any = true;
+        }
+        if (!any) out.append("nothing  <-- /fake hud, then click one");
+
+        context.getSource().sendFeedback(Text.literal(out.toString()));
+        return 1;
+    }
+
     private static int trackStatus(CommandContext<FabricClientCommandSource> context) {
         StringBuilder out = new StringBuilder("--- tracker ---");
         out.append("\n1. Chat        ").append(ChatHook.attached()
                 ? ChatHook.reason() : "NOT READING  <-- " + ChatHook.reason());
+        // Second, because everything below describes numbers you may simply not be able
+        // to see. /fake hud test settles which of the two it is.
+        out.append("\n   Drawing     ").append(Hud.attached()
+                ? "yes" : "CANNOT DRAW  <-- " + Hud.reason());
         out.append("\n2. Tracking    ").append(Sessions.tracking()
                 ? "on" : "OFF  <-- /fake track on");
         out.append("\n   HUD bar     ").append(!Sessions.hud() ? "off"
@@ -1629,6 +1715,14 @@ public class MirageClient implements ClientModInitializer {
         }
         out.append("\n   Kept         ").append(Sessions.past().size())
                 .append(" past session(s)");
+        // The wordings are the most likely thing to be wrong and the least likely to be
+        // guessed at, so they are named here rather than left in a file nobody opens.
+        out.append("\n   Wordings    ").append(Tracker.wordings())
+                .append(" (config/mirage-sessions.json -> paymentIn / paymentOut)");
+        if (!Tracker.lastBad().isEmpty()) {
+            out.append("\n   Bad pattern ").append(Tracker.lastBad());
+        }
+        out.append("\n\nCounting nothing? /fake track raw, do a /pay, then /fake track lines.");
 
         context.getSource().sendFeedback(Text.literal(out.toString()));
         return 1;

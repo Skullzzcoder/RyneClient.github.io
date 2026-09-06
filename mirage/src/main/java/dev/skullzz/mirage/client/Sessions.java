@@ -53,6 +53,18 @@ public final class Sessions {
 
     public static void setTracking(boolean on) {
         tracking = on;
+
+        // Switching tracking on with the bar switched off produced no visible change
+        // whatever, which is indistinguishable from the tracker not working. Turning it
+        // on turns on the one thing that shows you it is.
+        if (on) {
+            Hud.Element bar = Hud.byId("tracker");
+            if (bar != null && !bar.on) {
+                bar.on = true;
+                hud = true;
+                Hud.save();
+            }
+        }
         save();
     }
 
@@ -131,12 +143,60 @@ public final class Sessions {
         return true;
     }
 
+    /** Every line seen while capturing, newest last. */
+    private static final List<String> raw = new ArrayList<>();
+    private static final int RAW = 60;
+    private static boolean capturing;
+
+    public static boolean capturing() {
+        return capturing;
+    }
+
+    public static void setCapturing(boolean on) {
+        capturing = on;
+        if (!on) return;
+        raw.clear();
+    }
+
+    public static List<String> rawLines() {
+        return raw;
+    }
+
+    /**
+     * Writes the captured lines out, so the exact wording can be read rather than guessed.
+     *
+     * <p>The patterns this reads payments with were written from what DonutSMP's messages
+     * were assumed to look like. If they are wrong the tracker counts nothing and says
+     * nothing, which is indistinguishable from a quiet night -- so the way out is to look
+     * at the real lines instead of guessing again.
+     */
+    public static Path writeRaw() {
+        Path out = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
+                .resolve("mirage-chat.txt");
+        try {
+            Files.createDirectories(out.getParent());
+            Files.writeString(out, String.join(System.lineSeparator(), raw));
+            return out;
+        } catch (IOException failure) {
+            Mirage.LOGGER.warn("Mirage could not write the captured chat", failure);
+            return null;
+        }
+    }
+
     /**
      * Takes one chat line.
+     *
+     * <p>Captured before anything else, and whether or not tracking is on: a line you
+     * cannot see is a line you cannot write a pattern for, and the case worth diagnosing
+     * is exactly the one where nothing is being counted.
      *
      * @return what it made of it, or null if the line was not a payment
      */
     public static Tracker.Payment offer(String line) {
+        if (capturing && line != null && !line.isBlank()) {
+            raw.add(line);
+            while (raw.size() > RAW) raw.remove(0);
+        }
         if (!tracking) return null;
 
         Tracker.Payment payment = Tracker.read(line, System.currentTimeMillis());
@@ -273,6 +333,16 @@ public final class Sessions {
         root.addProperty("hud", hud);
         root.addProperty("alertAfter", alertAfter);
         root.addProperty("rakebackBps", rakebackBps);
+
+        // Written out every time, defaults included, so the file shows what can be edited
+        // rather than leaving you to find out that it can be.
+        JsonArray inWords = new JsonArray();
+        for (String pattern : patternsIn) inWords.add(pattern);
+        root.add("paymentIn", inWords);
+
+        JsonArray outWords = new JsonArray();
+        for (String pattern : patternsOut) outWords.add(pattern);
+        root.add("paymentOut", outWords);
         if (current != null) root.add("current", write(current));
 
         JsonArray old = new JsonArray();
@@ -323,6 +393,10 @@ public final class Sessions {
                 rakebackBps = Math.max(0, Math.min(5000, root.get("rakebackBps").getAsInt()));
             }
 
+            patternsIn = readPatterns(root, "paymentIn", Tracker.DEFAULT_IN);
+            patternsOut = readPatterns(root, "paymentOut", Tracker.DEFAULT_OUT);
+            Tracker.setPatterns(patternsIn, patternsOut);
+
             if (root.has("current")) current = read(root.getAsJsonObject("current"));
             if (root.has("past")) {
                 for (JsonElement element : root.getAsJsonArray("past")) {
@@ -337,6 +411,31 @@ public final class Sessions {
 
     private static void setAlertAfterQuietly(int count) {
         alertAfter = Math.max(2, Math.min(20, count));
+    }
+
+    /** How a payment is worded on this server, editable in the config. */
+    private static List<String> patternsIn = new ArrayList<>(Tracker.DEFAULT_IN);
+    private static List<String> patternsOut = new ArrayList<>(Tracker.DEFAULT_OUT);
+
+    public static List<String> patternsIn() {
+        return patternsIn;
+    }
+
+    public static List<String> patternsOut() {
+        return patternsOut;
+    }
+
+    private static List<String> readPatterns(JsonObject root, String key,
+                                             List<String> fallback) {
+        if (!root.has(key) || !root.get(key).isJsonArray()) return new ArrayList<>(fallback);
+
+        List<String> out = new ArrayList<>();
+        for (JsonElement element : root.getAsJsonArray(key)) {
+            if (element.isJsonPrimitive()) out.add(element.getAsString());
+        }
+        // An empty list in the file means somebody cleared it, which would leave the
+        // tracker unable to read anything at all. The defaults are the safer reading.
+        return out.isEmpty() ? new ArrayList<>(fallback) : out;
     }
 
     private static Tracker.Session read(JsonObject json) {
