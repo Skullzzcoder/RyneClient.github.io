@@ -73,14 +73,14 @@ public final class Tracker {
      * $10000000" lands in your tally.
      */
     public static final List<String> DEFAULT_IN = List.of(
-            "^([A-Za-z0-9_]{3,16})\\s+(?:has\\s+)?paid\\s+you\\s+\\$?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
-            "^([A-Za-z0-9_]{3,16})\\s+(?:has\\s+)?sent\\s+you\\s+\\$?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
-            "^you\\s+(?:have\\s+)?received\\s+\\$?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)\\s+from\\s+([A-Za-z0-9_]{3,16})");
+            "^([A-Za-z0-9_]{3,16})\\s+(?:has\\s+)?paid\\s+you\\s+\\p{Sc}?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
+            "^([A-Za-z0-9_]{3,16})\\s+(?:has\\s+)?sent\\s+you\\s+\\p{Sc}?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
+            "^you\\s+(?:have\\s+)?received\\s+\\p{Sc}?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)\\s+from\\s+([A-Za-z0-9_]{3,16})");
 
     public static final List<String> DEFAULT_OUT = List.of(
-            "^you\\s+(?:have\\s+)?paid\\s+([A-Za-z0-9_]{3,16})\\s+\\$?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
-            "^you\\s+(?:have\\s+)?sent\\s+([A-Za-z0-9_]{3,16})\\s+\\$?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
-            "^you\\s+(?:have\\s+)?sent\\s+\\$?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)\\s+to\\s+([A-Za-z0-9_]{3,16})");
+            "^you\\s+(?:have\\s+)?paid\\s+([A-Za-z0-9_]{3,16})\\s+\\p{Sc}?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
+            "^you\\s+(?:have\\s+)?sent\\s+([A-Za-z0-9_]{3,16})\\s+\\p{Sc}?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)",
+            "^you\\s+(?:have\\s+)?sent\\s+\\p{Sc}?\\s*([0-9][0-9,.]*)\\s*([kmbtKMBT]?)\\s+to\\s+([A-Za-z0-9_]{3,16})");
 
     private static String lastBad = "";
 
@@ -178,15 +178,69 @@ public final class Tracker {
     }
 
     /**
-     * Colour codes off, and a leading server tag off, and nothing else.
+     * Colour codes off, exotic characters flattened, and a leading server tag off.
      *
      * <p>Only the outermost tag, and only from the front: stripping anywhere would let
      * "[x] you paid" be smuggled into the middle of somebody's chat message.
      */
     static String strip(String line) {
-        String clean = line.replaceAll("\u00a7.", "").trim();
+        String clean = flatten(line.replaceAll("\u00a7.", ""));
         Matcher tag = LEADING_TAG.matcher(clean);
         return tag.find() ? clean.substring(tag.end()).trim() : clean;
+    }
+
+    /**
+     * Every kind of space a server can write, turned into the one kind a pattern matches.
+     *
+     * <p>A chat line does not arrive as the plain text it looks like on screen. Servers
+     * running a custom font put their currency glyph in the private use area, and they
+     * separate words with no-break and zero-width spaces. Java's {@code \s} matches none
+     * of that -- not U+00A0, not U+200B -- so "You paid Bob $ 1" written with any of them
+     * failed every wording while looking, on screen and in a log file, exactly like the
+     * line that works. Guessing the next such character one at a time is a losing game,
+     * so this flattens the whole class of them instead:
+     *
+     * <ul>
+     *   <li>anything Unicode calls a space becomes a single ordinary space,
+     *   <li>zero-width joiners, bidi marks, stray controls and custom-font glyphs are
+     *       dropped -- they carry no meaning a payment line depends on,
+     *   <li>runs of space collapse, so a dropped glyph does not leave a double gap.
+     * </ul>
+     *
+     * <p>Nothing here can add a word, so an anchored wording stays anchored: a line that
+     * did not start with "you paid" still does not.
+     */
+    static String flatten(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        boolean pendingSpace = false;
+        for (int i = 0; i < text.length(); i++) {
+            char letter = text.charAt(i);
+            if (Character.isWhitespace(letter) || Character.isSpaceChar(letter)) {
+                // Held rather than written, so trailing space never reaches the result.
+                pendingSpace = out.length() > 0;
+                continue;
+            }
+            int kind = Character.getType(letter);
+            // Invisible either way, and never the thing that tells a server message apart
+            // from a player's: safe to drop wherever they turn up.
+            if (kind == Character.FORMAT || kind == Character.CONTROL) continue;
+            // A custom-font glyph is visible, so at the front of a line it is a prefix --
+            // a rank badge, a channel marker -- and dropping it would hand the "^you paid"
+            // anchor to anyone who can type one. Kept there, where it defeats the anchor
+            // exactly as an unrecognised prefix should; dropped once real text has begun,
+            // which is where the currency glyph sits.
+            if (kind == Character.PRIVATE_USE || kind == Character.UNASSIGNED) {
+                if (out.length() == 0) {
+                    out.append(letter);
+                    pendingSpace = false;
+                }
+                continue;
+            }
+            if (pendingSpace) out.append(' ');
+            pendingSpace = false;
+            out.append(letter);
+        }
+        return out.toString();
     }
 
     /**

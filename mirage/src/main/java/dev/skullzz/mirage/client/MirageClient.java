@@ -1649,6 +1649,17 @@ public class MirageClient implements ClientModInitializer {
             Tracker.Payment read = Tracker.read(line, 0L);
             out.append("\n  ").append(read == null ? "[ ] " : "[+] ")
                     .append(RyneDraw.trim(line, 70));
+            // A line that will not parse usually looks perfect. What it is really made of
+            // -- a no-break space, a zero-width space, a currency glyph out of the
+            // server's own font -- is invisible on screen and in a log file alike, so a
+            // line that failed is shown again with every one of those spelled out. Only
+            // for the failures, and only when there is something to see: three rounds of
+            // this went by guessing at characters that were there all along.
+            if (read == null) {
+                String shown = spell(line);
+                if (!shown.equals(line)) out.append("\n      really: ")
+                        .append(RyneDraw.trim(shown, 70));
+            }
         }
 
         java.nio.file.Path file = Sessions.writeRaw();
@@ -1657,6 +1668,22 @@ public class MirageClient implements ClientModInitializer {
 
         context.getSource().sendFeedback(Text.literal(out.toString()));
         return lines.size();
+    }
+
+    /**
+     * The same text with anything not plain ASCII written out as its code point.
+     *
+     * <p>"You paid 6208 $\u00a01" and "You paid 6208 $ 1" are the same picture and
+     * different strings. This tells them apart.
+     */
+    private static String spell(String line) {
+        StringBuilder out = new StringBuilder(line.length());
+        for (int i = 0; i < line.length(); i++) {
+            char letter = line.charAt(i);
+            if (letter >= ' ' && letter < 127) out.append(letter);
+            else out.append(String.format("\\u%04x", (int) letter));
+        }
+        return out.toString();
     }
 
     private static int hudTest(CommandContext<FabricClientCommandSource> context) {

@@ -56,6 +56,21 @@ CASES = [
     ("You sent $ 750K to Bob",                           "OUT Bob 75000000"),
     ("Notch sent you $ 1.5m",                            "IN Notch 150000000"),
 
+    # A chat line is not the plain text it looks like. These are the same payment written
+    # the ways a server with a custom font and a styled currency actually writes it -- and
+    # every one of them failed while looking identical on screen and in a log file.
+    ("You paid 6208 $\u00a01",                            "OUT 6208 100"),   # no-break space
+    ("You paid 6208 $\u200b1",                            "OUT 6208 100"),   # zero-width space
+    ("You paid 6208 \ue000 1",                            "OUT 6208 100"),   # custom-font glyph
+    ("You paid 6208 \u20ac 1",                            "OUT 6208 100"),   # not a dollar sign
+    ("You\u00a0paid\u00a06208\u00a0$\u00a01",              "OUT 6208 100"),   # no plain space at all
+    ("\u200fYou paid 6208 $ 1",                           "OUT 6208 100"),   # leading bidi mark
+    ("You  paid   6208   $   1",                         "OUT 6208 100"),   # collapsed runs
+
+    # Flattening must not manufacture a payment out of somebody else's chat message.
+    ("<Griefer>\u00a0you paid Bob $ 999",                 "-"),
+    ("\ue000 you paid Bob $ 999",                         "-"),
+
     # Written by other people. None of these may land in the tally.
     ("Someone whispered: you paid Bob $10 for it",       "-"),
     ("<Griefer> you paid Bob $999999999",                "-"),
