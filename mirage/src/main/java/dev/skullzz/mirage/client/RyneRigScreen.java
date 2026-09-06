@@ -129,6 +129,13 @@ public class RyneRigScreen extends Screen {
             int fired = ClientDispensers.fireAllWatched();
             say(fired == 0 ? "Nothing watched to fire." : "Fired " + fired + ".");
         });
+        if (!rig.queue.isEmpty()) {
+            button("Clear queue (" + rig.queue.size() + ")", x + 282, y + 30, 150, () -> {
+                rig.queue.clear();
+                SelfFakes.save();
+                say("Queue cleared.");
+            });
+        }
         button("Refill", x + 282, y, 90, () -> {
             int filled = ClientDispensers.refillWatched();
             SelfFakes.save();
@@ -267,6 +274,13 @@ public class RyneRigScreen extends Screen {
         RyneDraw.text(context, this.textRenderer,
                 SelfFakes.rigsOn() ? "Rigs are on" : "Rigs are OFF - nothing below will fire",
                 x, top() + 62, SelfFakes.rigsOn() ? theme.dim : theme.accent);
+        // The queue overrides everything above it, so it is said next to them rather than
+        // somewhere you would have to go looking.
+        if (!rig.queue.isEmpty()) {
+            RyneDraw.text(context, this.textRenderer,
+                    "Queued: " + RyneDraw.trim(rig.queue.describe(), 60),
+                    x, top() + 76, theme.accent);
+        }
 
         if (rig.blackjack) paintHands(context, theme, rig);
 

@@ -504,7 +504,9 @@ public final class ClientDispensers {
             } else if (profile.blackjack) {
                 result = card(profile, fire.pos());
             } else {
-                result = profile.resultFor(fire.pos());
+                // The one place the queue may be spent on a cycled rig: a machine that is
+                // actually firing. Everything else asks resultFor, which only looks.
+                result = profile.takeResultFor(fire.pos());
             }
             if (result == null) {
                 warn("Rig '" + profile.name + "' has nothing to fire.");
@@ -1716,6 +1718,14 @@ public final class ClientDispensers {
             json.addProperty("place", profile.placeOutput);
             json.addProperty("breakSeconds", profile.breakSeconds);
 
+            // The queue is worth keeping: it is a run you set up deliberately, and losing
+            // it on a relog would be losing the thing you just spent a minute arranging.
+            if (!profile.queue.isEmpty()) {
+                JsonArray queued = new JsonArray();
+                for (String entry : profile.queue.entries()) queued.add(entry);
+                json.add("queue", queued);
+            }
+
             // Written whether it is on or off. Writing it only when on made a rig that
             // had been turned off look identical to one that had never heard of the game,
             // and there is no way to tell those apart on the way back in.
@@ -1859,6 +1869,13 @@ public final class ClientDispensers {
         if (json.has("place")) profile.placeOutput = json.get("place").getAsBoolean();
         if (json.has("breakSeconds")) {
             profile.breakSeconds = json.get("breakSeconds").getAsDouble();
+        }
+        if (json.has("queue")) {
+            java.util.List<String> queued = new java.util.ArrayList<>();
+            for (JsonElement entry : json.getAsJsonArray("queue")) {
+                if (entry.isJsonPrimitive()) queued.add(entry.getAsString());
+            }
+            profile.queue.copyFrom(queued);
         }
 
         if (json.has("mix")) {

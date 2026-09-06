@@ -92,8 +92,9 @@ check("each slot gets its own copy", "spec.withCount(1)" in fill)
 # makes the result key the rig. If mix ever grows one, this stops being true.
 tick = re.search(r"public static void tick\(MinecraftClient client\) \{(.*?)\n    \}",
                  disp, re.S).group(1)
+# Still no branch of its own; the call is now the one that also spends a queued entry.
 check("the result key is the rig", "profile.mix" not in tick
-      and "result = profile.resultFor(fire.pos());" in tick)
+      and "result = profile.takeResultFor(fire.pos());" in tick)
 
 # Cycling has to say what it landed on, and say something when it cannot cycle at all.
 select = re.search(r"private static void selectPreset\(MinecraftClient client, int delta\) \{"

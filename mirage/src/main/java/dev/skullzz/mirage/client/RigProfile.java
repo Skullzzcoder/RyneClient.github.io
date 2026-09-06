@@ -228,10 +228,70 @@ public final class RigProfile {
         return this.presets.get(this.presetIndex);
     }
 
-    /** What this dispenser should appear to fire: its own answer, else the cycled one. */
+    /**
+     * The next few results, set up in advance.
+     *
+     * <p>A run laid out once instead of a key press between every game. Empty by default,
+     * and once it is spent the rig goes back to whatever it was doing.
+     */
+    public final RigQueue queue = new RigQueue();
+
+    /**
+     * What this dispenser should appear to fire: its own answer, then the queue, then the
+     * cycled one.
+     *
+     * <p>Looking only. This is what the preview, the rig menu and the doctor all call,
+     * several times a second between them -- if it consumed a queued entry the queue would
+     * empty itself without a machine ever firing.
+     */
     public FakeSpec resultFor(BlockPos pos) {
         FakeSpec fixed = this.perDispenser.get(pos);
-        return fixed != null ? fixed : selected();
+        if (fixed != null) return fixed;
+
+        FakeSpec queued = presetNamed(this.queue.peek());
+        return queued != null ? queued : selected();
+    }
+
+    /**
+     * The same answer, and the queue moves on.
+     *
+     * <p>Only a machine actually firing may call this. Everything else asks
+     * {@link #resultFor}.
+     */
+    public FakeSpec takeResultFor(BlockPos pos) {
+        FakeSpec fixed = this.perDispenser.get(pos);
+        if (fixed != null) return fixed;
+
+        String next = this.queue.peek();
+        FakeSpec queued = presetNamed(next);
+        if (queued != null) {
+            this.queue.take();
+            return queued;
+        }
+        // An entry that matches nothing is dropped rather than left to jam the queue
+        // forever behind a name that no longer exists.
+        if (next != null) this.queue.take();
+        return selected();
+    }
+
+    /** A preset by its label, or null. What a queue entry means on a cycled rig. */
+    public FakeSpec presetNamed(String label) {
+        if (label == null) return null;
+        for (FakeSpec preset : this.presets) {
+            if (preset.label().equalsIgnoreCase(label)) return preset;
+        }
+        return null;
+    }
+
+    /** The names a queue entry may take on this rig, for suggesting and for checking. */
+    public java.util.List<String> queueOptions() {
+        java.util.List<String> out = new ArrayList<>();
+        if (hasSides()) {
+            out.addAll(sideNames());
+        } else {
+            for (FakeSpec preset : this.presets) out.add(preset.label());
+        }
+        return out;
     }
 
     /**
@@ -566,6 +626,19 @@ public final class RigProfile {
         // Only ever for this round, and only against sides that are actually known. Nothing
         // is known before the machines have been laid out, and taking that for a stale name
         // threw away a winner that had just been set by hand.
+        // The queue gets first say, and only here: a round is decided once however many
+        // machines fire in it, so this is the one place an entry may be spent. Consuming
+        // it per fire would burn two entries a round on a two-sided table.
+        String queued = this.queue.peek();
+        if (queued != null && hasSide(queued)) {
+            this.winner = queued;
+            this.queue.take();
+        } else if (queued != null && !names.isEmpty()) {
+            // Names an outcome this game does not have. Dropped rather than left to jam
+            // the queue behind something no side answers to.
+            this.queue.take();
+        }
+
         String wanted = this.winner;
         if (!wanted.isEmpty() && !names.isEmpty() && !hasSide(wanted)) wanted = "";
 

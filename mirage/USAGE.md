@@ -787,6 +787,34 @@ Panels: **Client** (rigs, everything, quiet), **Tracker**, **World**, **Rigs**, 
 `/fake pages` still opens the older list-and-pages menu, which has the longer
 explanations on it.
 
+### Queuing the next few results
+
+Set a run up once instead of pressing a key between every game.
+
+    /fake rig queue                    what is queued, and the next six games
+    /fake rig queue add diamond        one
+    /fake rig queue add emerald 3      three of them
+    /fake rig queue clear
+
+An entry means whatever your game produces: **a side name** on paper and blackjack, **an
+item name** on 50/50 and 45/45/10. Tab-complete offers the right ones, and anything else
+is refused at the door rather than silently dropped when it comes up.
+
+Once the queue is spent the rig goes back to whatever it was doing. `/fake rig queue`
+shows that too — the entries in brackets are what happens after.
+
+The queue survives a relog, shows in the rig menu, and is called out by `/fake doctor`
+above the cycled answer, because it overrides it: a rig that looks set to one thing and
+fires another would otherwise be a puzzle.
+
+> **A paper round spends one entry, not one per machine.** A round is decided once
+> however many dispensers fire in it, so a two-sided table would otherwise burn two
+> entries a round.
+
+> Looking at the queue never changes it. The preview, the rig menu, the doctor and the
+> dashboard all ask what is next several times a second — if asking consumed an entry the
+> queue would empty itself without a machine ever firing.
+
 ### The rig menu
 
 Rigs down the left with a box to name and create a new one; the running rig down the

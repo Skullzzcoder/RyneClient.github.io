@@ -1062,6 +1062,13 @@ public class MirageClient implements ClientModInitializer {
         String missing = ClientDispensers.noAnswer();
         out.append("\n3. Rig has answer  ").append(missing == null ? "yes" : missing);
 
+        // Before anything about the cycled answer: the queue overrides it, so a rig that
+        // looks set to one thing and fires another is explained here rather than puzzled at.
+        if (!profile.queue.isEmpty()) {
+            out.append("\n   Queued          ").append(profile.queue.describe())
+                    .append("  <-- these come first");
+        }
+
         // 4. the machines, each with what it would fire if it went off now
         Set<BlockPos> watched = ClientDispensers.watchedPositions();
         out.append("\n4. Machines        ").append(watched.size());
@@ -1666,6 +1673,65 @@ public class MirageClient implements ClientModInitializer {
         return all.size();
     }
 
+    private static int queueAdd(CommandContext<FabricClientCommandSource> context, int times) {
+        RigProfile profile = ClientDispensers.active();
+        String what = StringArgumentType.getString(context, "what");
+
+        // Checked against what this game can actually produce. An entry nothing answers
+        // to is dropped when it comes up, and a queue that silently discards what you put
+        // in it is worse than one that refuses at the door.
+        java.util.List<String> options = profile.queueOptions();
+        if (options.isEmpty()) {
+            return error(context, "'" + profile.name + "' has nothing to queue yet. Set its "
+                    + "items or sides up first.");
+        }
+
+        String matched = null;
+        for (String option : options) {
+            if (option.equalsIgnoreCase(what)) matched = option;
+        }
+        if (matched == null) {
+            return error(context, "'" + what + "' is not one of: "
+                    + String.join(", ", options));
+        }
+
+        int added = profile.queue.add(matched, times);
+        SelfFakes.save();
+
+        if (added < times) {
+            return feedback(context, "Added " + added + " (the queue holds "
+                    + RigQueue.MOST + "). Next: " + profile.queue.describe());
+        }
+        return feedback(context, "Next: " + profile.queue.describe());
+    }
+
+    /**
+     * The queue, and what the next few games would give.
+     *
+     * <p>Run past the end on purpose: once it is spent the rig goes back to what it was
+     * doing, and a preview that stopped at the queue would not say so.
+     */
+    private static int showQueue(CommandContext<FabricClientCommandSource> context) {
+        RigProfile profile = ClientDispensers.active();
+        String after = profile.hasSides()
+                ? (profile.winner.isEmpty() ? "chance" : profile.winner)
+                : profile.selected() == null ? "nothing set" : profile.selected().label();
+
+        StringBuilder out = new StringBuilder("Queue on '" + profile.name + "': ")
+                .append(profile.queue.describe());
+        out.append("\nNext ").append(6).append(": ");
+
+        java.util.List<String> plan = profile.queue.plan(6, after);
+        for (int i = 0; i < plan.size(); i++) {
+            if (i > 0) out.append(", ");
+            out.append(i < profile.queue.size() ? plan.get(i) : "(" + plan.get(i) + ")");
+        }
+        out.append("\nThe ones in brackets are what it does once the queue is spent.");
+
+        context.getSource().sendFeedback(Text.literal(out.toString()));
+        return profile.queue.size();
+    }
+
     private static int buildList(CommandContext<FabricClientCommandSource> context) {
         Map<String, FakeBlocks.Build> all = FakeBlocks.builds();
         if (all.isEmpty()) {
@@ -1695,6 +1761,27 @@ public class MirageClient implements ClientModInitializer {
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> rigBranch() {
         return ClientCommandManager.literal("rig")
                 .then(ClientCommandManager.literal("list").executes(MirageClient::listRigs))
+                .then(ClientCommandManager.literal("queue")
+                        .executes(MirageClient::showQueue)
+                        .then(ClientCommandManager.literal("clear").executes(context -> {
+                            ClientDispensers.active().queue.clear();
+                            SelfFakes.save();
+                            return feedback(context, "Queue cleared. The rig goes back to "
+                                    + "whatever it was doing.");
+                        }))
+                        .then(ClientCommandManager.literal("add")
+                                .then(ClientCommandManager.argument("what",
+                                                StringArgumentType.string())
+                                        .suggests((context, builder) ->
+                                                CommandSource.suggestMatching(
+                                                        ClientDispensers.active()
+                                                                .queueOptions(), builder))
+                                        .executes(context -> queueAdd(context, 1))
+                                        .then(ClientCommandManager.argument("times",
+                                                        IntegerArgumentType.integer(1, RigQueue.MOST))
+                                                .executes(context -> queueAdd(context,
+                                                        IntegerArgumentType.getInteger(
+                                                                context, "times")))))))
                 .then(ClientCommandManager.literal("new")
                         .then(ClientCommandManager.argument("name", StringArgumentType.word())
                                 .executes(context -> {
