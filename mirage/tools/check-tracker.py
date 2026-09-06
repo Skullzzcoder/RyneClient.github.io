@@ -193,6 +193,31 @@ check("status says loudly when chat is not being read",
 check("and says it before anything about the tally",
       "NOT READING" in status
       and status.index("NOT READING") < status.index("Session"))
+# The config used to be written with the defaults baked into it, and read back at startup
+# over whatever the running jar knew. That froze the wordings at whatever build first wrote
+# the file: four fixes in a row shipped, installed, and were silently overwritten on load.
+save = body(sess, "public static void save() {")
+check("the defaults are not written into the config",
+      'root.add("paymentIn", array(patternsIn));' in save
+      and "if (!patternsIn.equals(Tracker.DEFAULT_IN))" in save)
+check("nor the outgoing ones",
+      "if (!patternsOut.equals(Tracker.DEFAULT_OUT))" in save)
+check("but the file still says the keys exist", '"_help"' in save)
+
+# Every config written before that change still has a frozen copy in it, so loading has to
+# undo it -- by asking whether the wordings work, not by listing every set ever shipped.
+heal = body(sess, "private static void healPatterns() {")
+check("wordings from the file are checked against the parser", "Tracker.selfTest()" in heal)
+check("and replaced by the mod's own when they cannot read a payment",
+      "Tracker.setPatterns(patternsIn, patternsOut);" in heal
+      and "patternsIn = new ArrayList<>(Tracker.DEFAULT_IN);" in heal)
+check("a set that works is left alone", '"OK".equals(verdict)' in heal and "return;" in heal)
+check("and a replaced set is kept, not deleted",
+      "rejectedIn = patternsIn;" in heal and "rejectedOut = patternsOut;" in heal)
+check("replacing them is said out loud", "patternNotice =" in heal)
+check("healing runs on load", "healPatterns();" in sess)
+check("and the status shows the notice", "Sessions.patternNotice()" in client)
+
 # A jar that was never rebuilt and a fix that did not work look identical from inside the
 # game. Three rounds of this went by without a way to tell them apart, so the status runs
 # the parser over lines whose answers are known and says so before anything else.

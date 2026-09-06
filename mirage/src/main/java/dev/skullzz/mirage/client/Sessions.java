@@ -340,15 +340,25 @@ public final class Sessions {
         root.addProperty("alertAfter", alertAfter);
         root.addProperty("rakebackBps", rakebackBps);
 
-        // Written out every time, defaults included, so the file shows what can be edited
-        // rather than leaving you to find out that it can be.
-        JsonArray inWords = new JsonArray();
-        for (String pattern : patternsIn) inWords.add(pattern);
-        root.add("paymentIn", inWords);
-
-        JsonArray outWords = new JsonArray();
-        for (String pattern : patternsOut) outWords.add(pattern);
-        root.add("paymentOut", outWords);
+        // Only when you have actually changed them.
+        //
+        // These used to be written out every time, defaults included, "so the file shows
+        // what can be edited". That froze them. The file was written by one build and read
+        // back by the next, so every later fix to the default wordings was loaded over at
+        // startup by the older copy on disk and had no effect at all -- four fixes in a row
+        // shipped, installed, and silently overwritten. A default install now stores
+        // nothing here and follows the code it is running.
+        root.addProperty("_help", "To change how payments are read, add \"paymentIn\" and "
+                + "\"paymentOut\" arrays here. Leave them out to follow the mod's own "
+                + "wordings, which is what you want unless the server changed its wording. "
+                + "/fake track says how many are in force and whether they work.");
+        if (!patternsIn.equals(Tracker.DEFAULT_IN)) root.add("paymentIn", array(patternsIn));
+        if (!patternsOut.equals(Tracker.DEFAULT_OUT)) {
+            root.add("paymentOut", array(patternsOut));
+        }
+        // Kept, not thrown away: wordings that were dropped for failing are still yours.
+        if (!rejectedIn.isEmpty()) root.add("paymentInRejected", array(rejectedIn));
+        if (!rejectedOut.isEmpty()) root.add("paymentOutRejected", array(rejectedOut));
         if (current != null) root.add("current", write(current));
 
         JsonArray old = new JsonArray();
@@ -402,6 +412,7 @@ public final class Sessions {
             patternsIn = readPatterns(root, "paymentIn", Tracker.DEFAULT_IN);
             patternsOut = readPatterns(root, "paymentOut", Tracker.DEFAULT_OUT);
             Tracker.setPatterns(patternsIn, patternsOut);
+            healPatterns();
 
             if (root.has("current")) current = read(root.getAsJsonObject("current"));
             if (root.has("past")) {
@@ -429,6 +440,55 @@ public final class Sessions {
 
     public static List<String> patternsOut() {
         return patternsOut;
+    }
+
+    private static JsonArray array(List<String> values) {
+        JsonArray made = new JsonArray();
+        for (String value : values) made.add(value);
+        return made;
+    }
+
+    /** Wordings that were dropped for not working, kept so nothing is lost. */
+    private static List<String> rejectedIn = new ArrayList<>();
+    private static List<String> rejectedOut = new ArrayList<>();
+    private static String patternNotice = "";
+
+    /** Empty unless wordings from the file were dropped, in which case it says why. */
+    public static String patternNotice() {
+        return patternNotice;
+    }
+
+    /**
+     * Throws out wordings loaded from the file that cannot read a payment.
+     *
+     * <p>Every config written before this change has a full copy of some older build's
+     * defaults frozen into it, and those load over whatever the running jar knows. Rather
+     * than keep a list of every set ever shipped, this asks the only question that
+     * matters: with these wordings in force, can the parser still read a payment? If not
+     * they are dropped for the build's own, moved to paymentInRejected / paymentOutRejected
+     * so a hand-written set is never silently lost, and said out loud -- a tracker that
+     * quietly reads nothing is the failure this whole thing exists to prevent.
+     */
+    private static void healPatterns() {
+        rejectedIn = new ArrayList<>();
+        rejectedOut = new ArrayList<>();
+        patternNotice = "";
+
+        boolean custom = !patternsIn.equals(Tracker.DEFAULT_IN)
+                || !patternsOut.equals(Tracker.DEFAULT_OUT);
+        if (!custom) return;
+
+        String verdict = Tracker.selfTest();
+        if ("OK".equals(verdict)) return;
+
+        if (!patternsIn.equals(Tracker.DEFAULT_IN)) rejectedIn = patternsIn;
+        if (!patternsOut.equals(Tracker.DEFAULT_OUT)) rejectedOut = patternsOut;
+        patternsIn = new ArrayList<>(Tracker.DEFAULT_IN);
+        patternsOut = new ArrayList<>(Tracker.DEFAULT_OUT);
+        Tracker.setPatterns(patternsIn, patternsOut);
+        patternNotice = "Wordings in config/mirage-sessions.json could not read a payment ("
+                + verdict + "). Using the mod's own instead; yours are kept in the file "
+                + "under paymentInRejected / paymentOutRejected.";
     }
 
     private static List<String> readPatterns(JsonObject root, String key,

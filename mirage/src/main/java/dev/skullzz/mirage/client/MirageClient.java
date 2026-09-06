@@ -1754,7 +1754,12 @@ public class MirageClient implements ClientModInitializer {
         // The wordings are the most likely thing to be wrong and the least likely to be
         // guessed at, so they are named here rather than left in a file nobody opens.
         out.append("\n   Wordings    ").append(Tracker.wordings())
-                .append(" (config/mirage-sessions.json -> paymentIn / paymentOut)");
+                .append(Sessions.patternNotice().isEmpty()
+                        ? " (the mod's own, or yours from config/mirage-sessions.json)"
+                        : " (the mod's own)");
+        if (!Sessions.patternNotice().isEmpty()) {
+            out.append("\n   Replaced    ").append(Sessions.patternNotice());
+        }
         if (!Tracker.lastBad().isEmpty()) {
             out.append("\n   Bad pattern ").append(Tracker.lastBad());
         }
