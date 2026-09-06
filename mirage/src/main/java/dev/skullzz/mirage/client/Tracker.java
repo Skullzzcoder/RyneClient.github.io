@@ -279,6 +279,39 @@ public final class Tracker {
         }
     }
 
+    /**
+     * Runs the parser over lines whose answers are known, and says what it got wrong.
+     *
+     * <p>Not a substitute for the test harness. This answers a different question, from
+     * inside the game: is the jar that is loaded the one you think it is? A wording fix
+     * that was never rebuilt looks exactly like a wording fix that did not work, and
+     * three rounds of this went by without a way to tell those apart.
+     *
+     * <p>It runs against the wordings actually in force, so it also catches a bad edit to
+     * paymentIn / paymentOut in the config.
+     *
+     * @return "OK", or the first thing this build gets wrong
+     */
+    public static String selfTest() {
+        if (!is(read("You paid Notch $ 1", 0L), false, "Notch", 100))
+            return "FAILED on a space after the $ -- this build is older than that fix";
+        if (!is(read("You paid Notch $\u00a01", 0L), false, "Notch", 100))
+            return "FAILED on a no-break space -- this build is older than that fix";
+        if (!is(read("You paid Notch \ue000 1", 0L), false, "Notch", 100))
+            return "FAILED on a custom-font glyph -- this build is older than that fix";
+        if (!is(read("Notch paid you $1,500", 0L), true, "Notch", 150000))
+            return "FAILED on money coming in";
+        // The one that matters most: chat is written by other people.
+        if (read("<Griefer> you paid Bob $999", 0L) != null)
+            return "FAILED -- somebody else's chat message counts as your money";
+        return "OK";
+    }
+
+    private static boolean is(Payment payment, boolean incoming, String player, long cents) {
+        return payment != null && payment.incoming == incoming
+                && player.equals(payment.player) && payment.cents == cents;
+    }
+
     /** Cents back into something to read. */
     public static String money(long cents) {
         long whole = Math.abs(cents) / 100;

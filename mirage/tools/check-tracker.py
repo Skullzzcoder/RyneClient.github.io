@@ -193,6 +193,17 @@ check("status says loudly when chat is not being read",
 check("and says it before anything about the tally",
       "NOT READING" in status
       and status.index("NOT READING") < status.index("Session"))
+# A jar that was never rebuilt and a fix that did not work look identical from inside the
+# game. Three rounds of this went by without a way to tell them apart, so the status runs
+# the parser over lines whose answers are known and says so before anything else.
+check("status proves the parser in this build works", "Tracker.selfTest()" in status)
+check("and says it before anything about the tally",
+      status.index("selfTest") < status.index("Session"))
+check("the self-test covers each wording fix that has caught us out",
+      all(w in source for w in ("$ 1", "\\u00a0", "\\ue000")))
+check("and that somebody else's chat still does not count",
+      "<Griefer> you paid Bob $999" in source)
+
 check("status says how to switch tracking on",
       "/fake track on" in status)
 check("and does not send you after a session switch that no longer exists",

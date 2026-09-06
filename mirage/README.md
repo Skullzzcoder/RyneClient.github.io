@@ -40,7 +40,24 @@ The first run downloads Gradle 9.5.1, which takes a minute. Loom 1.17.20 declare
 `org.gradle.plugin.api-version` 9.5.0, so an older wrapper fails to resolve the plugin at
 all — hence the pinned distribution in `gradle/wrapper/gradle-wrapper.properties`.
 
-The jar lands in `build/libs/mirage-1.0.0.jar`. Ignore the `-sources` one.
+The jar lands in `build/libs/mirage-1.1.0.jar`. Ignore the `-sources` one.
+
+**Delete any older `mirage-*.jar` from your `mods/` folder before copying the new one
+in.** The version is in the filename, so a new build does not overwrite the old one --
+they sit side by side, Fabric sees the same mod twice, and refuses to start. That error
+is the point: it is loud. The alternative, a stale jar quietly running while you read a
+changelog for code that was never loaded, cost three rounds of debugging on the payment
+tracker alone.
+
+Not sure which build is running? In game, `/fake track` opens with a line that runs the
+payment parser over lines whose answers are known:
+
+```
+0. Parser      OK
+```
+
+If it says `FAILED on a space after the $` instead, the jar loaded is older than that
+fix, and nothing below that line is worth reading until the rebuild is sorted.
 
 ### Updating to a new copy
 
@@ -74,7 +91,7 @@ powershell -ExecutionPolicy Bypass -File fabric-versions.ps1 -MinecraftVersion 2
 gradlew build -Ptarget=26.2
 ```
 
-That writes `versions/26.2.properties` and builds `mirage-mc26.2-1.0.0.jar` beside the
+That writes `versions/26.2.properties` and builds `mirage-mc26.2-1.1.0.jar` beside the
 1.21.11 one, so two targets never overwrite each other.
 
 **One jar per Minecraft version** — a Fabric mod is compiled against remapped Minecraft
@@ -132,7 +149,7 @@ standalone script rather than a Gradle task.
 
 ## Installing
 
-Drop `mirage-1.0.0.jar` and the [Fabric API](https://modrinth.com/mod/fabric-api) jar into
+Drop `mirage-1.1.0.jar` and the [Fabric API](https://modrinth.com/mod/fabric-api) jar into
 your server's `mods/` folder and restart. Nothing goes on the clients.
 
 State lives in `<world>/mirage.json`, so pranks survive a restart.

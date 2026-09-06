@@ -1715,6 +1715,15 @@ public class MirageClient implements ClientModInitializer {
 
     private static int trackStatus(CommandContext<FabricClientCommandSource> context) {
         StringBuilder out = new StringBuilder("--- tracker ---");
+        // First, because it is the only line that can tell you the jar you are running is
+        // not the jar you built. Everything below describes a parser this may have already
+        // said is the wrong one.
+        String proof = Tracker.selfTest();
+        out.append("\n0. Parser      ").append("OK".equals(proof) ? "OK" : proof + "  <-- ");
+        if (!"OK".equals(proof)) {
+            out.append("rebuild, or check paymentIn / paymentOut in "
+                    + "config/mirage-sessions.json");
+        }
         out.append("\n1. Chat        ").append(ChatHook.attached()
                 ? ChatHook.reason() : "NOT READING  <-- " + ChatHook.reason());
         // Second, because everything below describes numbers you may simply not be able
