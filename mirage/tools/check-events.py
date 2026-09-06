@@ -62,7 +62,7 @@ try:
     check("the harness ran", run.returncode == 0 and lines and lines[-1] == "OK")
 
     # The callers have to go through it, or the two bugs come back one at a time.
-    for name in ("ChatHook", "HudBar"):
+    for name in ("ChatHook", "Hud"):
         body = io.open("src/main/java/dev/skullzz/mirage/client/%s.java" % name,
                        encoding="utf-8").read()
         check("%s subscribes through Events" % name, "Events.subscribe(" in body)

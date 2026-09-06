@@ -116,8 +116,8 @@ public class RyneTrackerScreen extends Screen {
                 SIDE - PAD, () -> {
                     Sessions.setHud(!Sessions.hud());
                     say(!Sessions.hud() ? "HUD off."
-                            : HudBar.attached() ? "HUD on, across the top of the screen."
-                                    : "HUD on, but it cannot draw: " + HudBar.reason());
+                            : Hud.attached() ? "HUD on, across the top of the screen."
+                                    : "HUD on, but it cannot draw: " + Hud.reason());
                 });
 
         sy += 40;

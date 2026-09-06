@@ -663,6 +663,46 @@ and *why did that just appear*.
 > blank name and everything shows everywhere, exactly as it did before. It fails
 > towards showing your build, never towards hiding it.
 
+## Waypoints and the HUD
+
+    /fake wp add shop            marks where you are standing
+    /fake wp add base blue       ...in a colour
+    /fake wp                     everything, with distances
+    /fake wp remove shop
+    /fake hud                    arrange what shows on screen
+
+**A waypoint belongs to the world it was marked in**, the same way a build does, so a
+shop on DonutSMP is not a bearing pointing into a single-player world. One saved before
+that existed shows everywhere rather than vanishing.
+
+### The HUD
+
+Four pieces, each switched on separately: **tracker bar**, **coordinates**, **waypoint
+compass**, **session time**. `/fake hud` opens the editor:
+
+- **Drag** to move one. **Click** to switch it on or off. Escape when done.
+- Switched-off elements are drawn dimmed with their name, because an element you cannot
+  see is one you cannot switch on.
+- Everything is drawn where it really sits, so what you are moving is the thing itself.
+- Leave `x` at 0 and a piece centres itself.
+
+The compass shows only waypoints **in front of you** — a strip that reads left to right
+as what you are looking at has no place for something behind you — with the distance
+under each mark.
+
+> The bearing maths is checked against Minecraft's yaw rather than assumed. Yaw 0 is
+> south and increases toward west, which is its own convention; the first version of this
+> had the whole compass rotated 180°, which looks entirely plausible until you have walked
+> the wrong way for two minutes.
+
+## Exporting the payments
+
+    /fake export
+
+Writes every payment from every session to `config/mirage-payments.csv` — session, time,
+direction, player, amount. Fields are quoted, and amounts are plain numbers rather than
+`$1,234.00`, so a spreadsheet is handed a number instead of a piece of text.
+
 ## Tracker — what you have won and lost
 
 Reads chat and adds it up. Accounting, not advantage: every line it reads is one already

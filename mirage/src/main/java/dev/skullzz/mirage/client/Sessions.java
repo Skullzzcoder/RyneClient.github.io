@@ -62,6 +62,13 @@ public final class Sessions {
 
     public static void setHud(boolean on) {
         hud = on;
+        // The bar is a HUD element now, so the two switches must not disagree: one of
+        // them saying on while the other says off is a bar that is on and invisible.
+        Hud.Element bar = Hud.byId("tracker");
+        if (bar != null) {
+            bar.on = on;
+            Hud.save();
+        }
         save();
     }
 
@@ -183,6 +190,67 @@ public final class Sessions {
             total[3] += session.losses();
         }
         return total;
+    }
+
+    private static String lastExport = "";
+
+    public static String lastExport() {
+        return lastExport;
+    }
+
+    /**
+     * Writes every payment out as a spreadsheet.
+     *
+     * <p>Your own numbers, in a form something else can read. Quoted properly, because a
+     * player name is not guaranteed to be free of the one character that would split a
+     * row in half.
+     *
+     * @return where it went, or null with a reason in {@link #lastExport()}
+     */
+    public static Path export() {
+        List<Tracker.Session> all = new ArrayList<>(past);
+        if (current != null) all.add(0, current);
+        if (all.isEmpty()) {
+            lastExport = "No sessions to write.";
+            return null;
+        }
+
+        StringBuilder csv = new StringBuilder("session,when,direction,player,amount\n");
+        java.time.format.DateTimeFormatter when = java.time.format.DateTimeFormatter
+                .ofPattern("yyyy-MM-dd HH:mm:ss").withZone(java.time.ZoneId.systemDefault());
+
+        for (int i = 0; i < all.size(); i++) {
+            Tracker.Session session = all.get(i);
+            for (Tracker.Payment payment : session.payments) {
+                csv.append(i).append(',')
+                        .append(when.format(java.time.Instant.ofEpochMilli(payment.at)))
+                        .append(',').append(payment.incoming ? "in" : "out").append(',')
+                        .append(quote(payment.player)).append(',')
+                        // Plain cents, not "$1,234.00": a spreadsheet should be handed a
+                        // number, and a thousands separator makes it a piece of text.
+                        .append(payment.cents / 100).append('.')
+                        .append(String.format("%02d", payment.cents % 100))
+                        .append('\n');
+            }
+        }
+
+        Path out = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir()
+                .resolve("mirage-payments.csv");
+        try {
+            Files.createDirectories(out.getParent());
+            Files.writeString(out, csv.toString());
+            lastExport = "written";
+            return out;
+        } catch (IOException failure) {
+            lastExport = failure.toString();
+            Mirage.LOGGER.warn("Mirage could not write the payment export", failure);
+            return null;
+        }
+    }
+
+    /** A CSV field, safe whatever is in it. */
+    static String quote(String value) {
+        return '"' + value.replace("\"", "\"\"") + '"';
     }
 
     // ----------------------------------------------------------------- persistence

@@ -26,8 +26,13 @@ check("rows act through plain Java", "Runnable" in source and "BooleanSupplier" 
 # Easing measured in seconds, not per frame. The naive form is the bug this guards.
 check("easing takes a duration", "float ease(float value, float target, float perSecond, float seconds)" in source)
 check("and is exponential in it", "Math.exp(-perSecond * seconds)" in source)
+# The clamp is shared with the HUD now, so the rule cannot differ between the two.
 check("a panel dragged away can be dragged back", "static void clamp(" in source
-      and "screenHeight - TITLE_HEIGHT" in source)
+      and "clampY(panel.y, TITLE_HEIGHT" in source)
+check("the clamp is one rule, shared", "static int clampX(" in source
+      and "static int clampY(" in source)
+hud = io.open("src/main/java/dev/skullzz/mirage/client/Hud.java", encoding="utf-8").read()
+check("the HUD uses the same clamp", "RyneGui.clampX(" in hud and "RyneGui.clampY(" in hud)
 # Half a row is not a target.
 check("a shut panel takes no row clicks", "if (panel.shut()) return -1;" in source)
 

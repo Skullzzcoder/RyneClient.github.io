@@ -84,6 +84,18 @@ public class RyneClickScreen extends Screen {
                 }, null)
                 .add("Open it", RyneGui.Kind.ACTION, () -> open(new RyneTrackerScreen()), null));
 
+        GUI.add(new RyneGui.Panel("hud", "HUD", 12, 232)
+                .add("Tracker bar", RyneGui.Kind.TOGGLE,
+                        () -> toggleHud("tracker"), () -> shows("tracker"))
+                .add("Coordinates", RyneGui.Kind.TOGGLE,
+                        () -> toggleHud("coords"), () -> shows("coords"))
+                .add("Compass", RyneGui.Kind.TOGGLE,
+                        () -> toggleHud("compass"), () -> shows("compass"))
+                .add("Session time", RyneGui.Kind.TOGGLE,
+                        () -> toggleHud("clock"), () -> shows("clock"))
+                .add("Arrange it", RyneGui.Kind.ACTION,
+                        () -> open(new RyneHudScreen()), null));
+
         GUI.add(new RyneGui.Panel("world", "World", 160, 12)
                 .add("Take all builds", RyneGui.Kind.ACTION, () -> {
                     FakeBlocks.takeAll();
@@ -113,6 +125,21 @@ public class RyneClickScreen extends Screen {
         GUI.add(themes);
 
         RyneLayout.load(GUI);
+    }
+
+    private static boolean shows(String id) {
+        Hud.Element element = Hud.byId(id);
+        return element != null && element.on;
+    }
+
+    private static void toggleHud(String id) {
+        Hud.Element element = Hud.byId(id);
+        if (element == null) return;
+
+        element.on = !element.on;
+        Hud.save();
+        // The tracker bar has a second switch of its own; they must not disagree.
+        if (id.equals("tracker")) Sessions.setHud(element.on);
     }
 
     private static void open(Screen screen) {

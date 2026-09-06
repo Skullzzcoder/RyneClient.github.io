@@ -311,6 +311,53 @@ public class MirageClient implements ClientModInitializer {
                                                             + "after " + Sessions.alertAfter()
                                                             + " out in a row.");
                                                 }))))
+                        .then(ClientCommandManager.literal("hud").executes(context -> {
+                            MinecraftClient client = MinecraftClient.getInstance();
+                            client.execute(() -> client.setScreen(new RyneHudScreen()));
+                            return 1;
+                        }))
+                        .then(ClientCommandManager.literal("wp")
+                                .executes(MirageClient::waypointList)
+                                .then(ClientCommandManager.literal("add")
+                                        .then(ClientCommandManager.argument("name",
+                                                        StringArgumentType.word())
+                                                .executes(context -> addWaypoint(context, "white"))
+                                                .then(ClientCommandManager.argument("colour",
+                                                                StringArgumentType.word())
+                                                        .suggests((context, builder) ->
+                                                                CommandSource.suggestMatching(
+                                                                        Waypoints.COLOURS, builder))
+                                                        .executes(context -> addWaypoint(context,
+                                                                StringArgumentType.getString(
+                                                                        context, "colour"))))))
+                                .then(ClientCommandManager.literal("remove")
+                                        .then(ClientCommandManager.argument("name",
+                                                        StringArgumentType.word())
+                                                .suggests((context, builder) ->
+                                                        CommandSource.suggestMatching(
+                                                                Waypoints.names(), builder))
+                                                .executes(context -> {
+                                                    String name = StringArgumentType
+                                                            .getString(context, "name");
+                                                    return Waypoints.remove(name)
+                                                            ? feedback(context, "Removed '"
+                                                                    + name + "'.")
+                                                            : error(context, "No waypoint called '"
+                                                                    + name + "'.");
+                                                })))
+                                .then(ClientCommandManager.literal("show").executes(context -> {
+                                    Waypoints.setShown(!Waypoints.shown());
+                                    return feedback(context, Waypoints.shown()
+                                            ? "Waypoints on the compass."
+                                            : "Waypoints hidden.");
+                                })))
+                        .then(ClientCommandManager.literal("export").executes(context -> {
+                            java.nio.file.Path written = Sessions.export();
+                            return written == null
+                                    ? error(context, "Nothing to export, or it could not "
+                                            + "be written. " + Sessions.lastExport())
+                                    : feedback(context, "Written to " + written + ".");
+                        }))
                         .then(ClientCommandManager.literal("clear").executes(MirageClient::clearAll))
                         .then(ClientCommandManager.literal("list").executes(MirageClient::list))));
 
@@ -464,9 +511,12 @@ public class MirageClient implements ClientModInitializer {
         FakeClicks.register();
         FakeHands.register();
         RyneClickScreen.register();
+        RyneHudScreen.register();
         Sessions.load();
         ChatHook.register();
-        HudBar.register();
+        Hud.register();
+        Hud.load();
+        Waypoints.load();
         Mirage.LOGGER.info("Mirage client ready. /fake ui");
     }
 
@@ -1554,7 +1604,7 @@ public class MirageClient implements ClientModInitializer {
         out.append("\n2. Tracking    ").append(Sessions.tracking()
                 ? "on" : "OFF  <-- /fake track on");
         out.append("\n   HUD bar     ").append(!Sessions.hud() ? "off"
-                : HudBar.attached() ? "on" : "ON, but cannot draw: " + HudBar.reason());
+                : Hud.attached() ? "on" : "ON, but cannot draw: " + Hud.reason());
 
         Tracker.Session session = Sessions.current();
         if (session == null) {
@@ -1575,6 +1625,45 @@ public class MirageClient implements ClientModInitializer {
 
         context.getSource().sendFeedback(Text.literal(out.toString()));
         return 1;
+    }
+
+    private static int addWaypoint(CommandContext<FabricClientCommandSource> context,
+                                   String colour) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null) return error(context, "Nowhere to mark.");
+
+        String name = StringArgumentType.getString(context, "name");
+        BlockPos at = client.player.getBlockPos();
+        Waypoints.add(name, at.getX(), at.getY(), at.getZ(), colour, FakeBlocks.worldKey());
+
+        return feedback(context, "Marked '" + name + "' at " + at.getX() + " " + at.getY()
+                + " " + at.getZ() + ". Turn the compass on in /fake hud.");
+    }
+
+    private static int waypointList(CommandContext<FabricClientCommandSource> context) {
+        java.util.List<Waypoints.Mark> all = Waypoints.all();
+        if (all.isEmpty()) {
+            return feedback(context, "No waypoints. /fake wp add <name> marks where you "
+                    + "are standing.");
+        }
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        String world = FakeBlocks.worldKey();
+        StringBuilder out = new StringBuilder("Waypoints:");
+
+        for (Waypoints.Mark mark : all) {
+            out.append("\n  ").append(mark.name).append("  ")
+                    .append(mark.x).append(' ').append(mark.y).append(' ').append(mark.z);
+            if (!mark.here(world)) {
+                out.append("  (another world)");
+            } else if (client.player != null) {
+                double away = Compass.flatDistance(mark.x - client.player.getX(),
+                        mark.z - client.player.getZ());
+                out.append("  ").append(Compass.shortDistance(away));
+            }
+        }
+        context.getSource().sendFeedback(Text.literal(out.toString()));
+        return all.size();
     }
 
     private static int buildList(CommandContext<FabricClientCommandSource> context) {

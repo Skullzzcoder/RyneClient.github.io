@@ -209,8 +209,23 @@ public final class RyneGui {
      * handle is what you need.
      */
     public static void clamp(Panel panel, int screenWidth, int screenHeight) {
-        panel.x = Math.max(0, Math.min(panel.x, screenWidth - PANEL_WIDTH));
-        panel.y = Math.max(0, Math.min(panel.y, screenHeight - TITLE_HEIGHT));
+        panel.x = clampX(panel.x, PANEL_WIDTH, screenWidth);
+        panel.y = clampY(panel.y, TITLE_HEIGHT, screenHeight);
+    }
+
+    /**
+     * Keeps a box on screen, given how much of it has to stay visible.
+     *
+     * <p>Shared with the HUD, so a panel and a HUD element cannot end up following
+     * different rules about what "off the edge" means. A negative screen -- a window
+     * mid-resize reports one -- gives zero rather than a negative position.
+     */
+    public static int clampX(int x, int keepVisible, int screenWidth) {
+        return Math.max(0, Math.min(x, Math.max(0, screenWidth - keepVisible)));
+    }
+
+    public static int clampY(int y, int keepVisible, int screenHeight) {
+        return Math.max(0, Math.min(y, Math.max(0, screenHeight - keepVisible)));
     }
 
     public void clampAll(int screenWidth, int screenHeight) {

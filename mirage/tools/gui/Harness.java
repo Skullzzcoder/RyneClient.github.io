@@ -80,6 +80,15 @@ public class Harness {
         check("its handle is still on screen", a.y + RyneGui.TITLE_HEIGHT <= 600);
         gui.endDrag();
 
+        // --- the clamp the HUD shares, including a window mid-resize
+        check("clamped inside stays put", RyneGui.clampX(50, 100, 1000) == 50);
+        check("clamped past the right comes back", RyneGui.clampX(990, 100, 1000) == 900);
+        check("clamped past the left comes back", RyneGui.clampX(-50, 100, 1000) == 0);
+        check("a screen narrower than the box gives zero, not a negative",
+                RyneGui.clampX(40, 100, 60) == 0);
+        check("the same holds vertically", RyneGui.clampY(-5, 20, 400) == 0
+                && RyneGui.clampY(500, 20, 400) == 380);
+
         // --- easing is measured in seconds, not frames
         float slow = RyneGui.ease(0f, 1f, 14f, 1f / 30f);
         float fast = RyneGui.ease(0f, 1f, 14f, 1f / 60f);

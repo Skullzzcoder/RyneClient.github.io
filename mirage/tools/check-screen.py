@@ -14,7 +14,8 @@ SCREENS = ["src/main/java/dev/skullzz/mirage/client/MirageSchematicsScreen.java"
            "src/main/java/dev/skullzz/mirage/client/RyneScreen.java",
            "src/main/java/dev/skullzz/mirage/client/RyneRigScreen.java",
            "src/main/java/dev/skullzz/mirage/client/RyneTrackerScreen.java",
-           "src/main/java/dev/skullzz/mirage/client/RyneClickScreen.java"]
+           "src/main/java/dev/skullzz/mirage/client/RyneClickScreen.java",
+           "src/main/java/dev/skullzz/mirage/client/RyneHudScreen.java"]
 
 # Also scanned for unproven calls, but not screens, so the redraw rule does not apply.
 HELPERS = ["src/main/java/dev/skullzz/mirage/client/RyneDraw.java"]
