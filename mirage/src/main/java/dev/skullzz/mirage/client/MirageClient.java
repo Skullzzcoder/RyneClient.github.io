@@ -48,6 +48,7 @@ public class MirageClient implements ClientModInitializer {
     private static KeyBinding nextResult;
     private static KeyBinding previousResult;
     private static KeyBinding openMenu;
+    private static KeyBinding openMaps;
     private static KeyBinding cycleRig;
     private static KeyBinding armNext;
     private static KeyBinding fireNow;
@@ -421,6 +422,7 @@ public class MirageClient implements ClientModInitializer {
             while (openClient.wasPressed()) client.setScreen(new RyneClickScreen());
             while (openRigs.wasPressed()) client.setScreen(new RyneRigScreen());
             while (openTracker.wasPressed()) client.setScreen(new RyneTrackerScreen());
+            while (openMaps.wasPressed()) client.setScreen(new RyneMapScreen());
             if (openKeys) {
                 openKeys = false;
                 client.setScreen(new MirageKeysScreen());
@@ -596,6 +598,9 @@ public class MirageClient implements ClientModInitializer {
         // command, and an accidental clash is worse than one more click.
         openMenu = bind("open_menu", GLFW.GLFW_KEY_UNKNOWN, category,
                 "Open the fake items editor");
+        // M is the vanilla-unused letter nearest to what it does.
+        openMaps = bind("open_maps", GLFW.GLFW_KEY_M, category,
+                "Open map art");
     }
 
     /** What a key is bound to now, in words, or that it is not bound at all. */

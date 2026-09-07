@@ -148,6 +148,46 @@ public final class RyneDraw {
         box(context, x, y, Math.min(12, width), 1, accent);
     }
 
+    /**
+     * The pointer's tail and whatever rings are still going.
+     *
+     * <p>Built from the same rectangle as everything else: the tail is a run of small
+     * squares tapering toward the back, and a ring is four thin sides drawn at a growing
+     * radius. Both fade as they age, which is what keeps them feeling like light rather
+     * than like shapes somebody drew.
+     */
+    public static void cursor(DrawContext context, RyneCursor cursor, int accent) {
+        java.util.List<RyneCursor.Point> tail = cursor.tail();
+        for (int i = tail.size() - 1; i >= 0; i--) {
+            RyneCursor.Point point = tail.get(i);
+            float life = point.life();
+            if (life <= 0f) continue;
+
+            int fromNewest = tail.size() - 1 - i;
+            int size = RyneCursor.thickness(fromNewest, life);
+            // Squared, so the tail falls away quickly instead of ending in a hard stop.
+            box(context, point.x - size / 2, point.y - size / 2, size, size,
+                    RyneGui.fade(accent, life * life * 0.9f));
+        }
+
+        for (RyneCursor.Ring ring : cursor.rings()) {
+            float life = ring.life();
+            if (life <= 0f) continue;
+
+            int radius = ring.radius();
+            int size = radius * 2;
+            outline(context, ring.x - radius, ring.y - radius, size, size,
+                    RyneGui.fade(accent, life * 0.7f));
+            // A second, tighter ring a little behind the first. One ring reads as a
+            // circle appearing; two read as something having happened.
+            int inner = Math.round(radius * 0.55f);
+            if (inner > 1) {
+                outline(context, ring.x - inner, ring.y - inner, inner * 2, inner * 2,
+                        RyneGui.fade(accent, life * 0.35f));
+            }
+        }
+    }
+
     /** Cut to fit a column, so a long name cannot run into the next one. */
     public static String trim(String message, int most) {
         return message.length() <= most ? message : message.substring(0, most - 1) + "...";

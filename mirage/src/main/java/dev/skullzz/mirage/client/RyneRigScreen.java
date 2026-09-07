@@ -174,11 +174,11 @@ public class RyneRigScreen extends Screen {
             button(label, x + column * 104, y, 98, () -> {
                 ClientDispensers.active().setGame(pick);
                 SelfFakes.save();
+                // say() reopens the screen, which is what rebuilds it -- and the rows
+                // below here belong to the game that was on, so it has to be rebuilt.
+                // (Screen.clearAndInit would do it in place, but nothing in this mod has
+                // ever watched that compile.)
                 say("Now playing: " + ClientDispensers.active().mode() + ".");
-                // The rows below belong to the game that was on, so the menu is rebuilt.
-                // Reopening is how: Screen.clearAndInit exists, but nothing in this mod has
-                // ever watched it compile, and setScreen is on every other button here.
-                if (this.client != null) this.client.setScreen(new RyneRigScreen());
             });
             column++;
         }
@@ -268,6 +268,33 @@ public class RyneRigScreen extends Screen {
             y += 30;
         }
 
+        if (rig.blackjack) {
+            // The table built out of item frames: the map you are holding joins the run,
+            // and every card dealt is painted onto the next one along.
+            button("Add held map to the table (" + rig.cardMaps.size() + ")", x, y, 250,
+                    () -> {
+                        int id = MapArt.heldMapId();
+                        if (id < 0) {
+                            say("Hold the map that is going in the frame.");
+                            return;
+                        }
+                        if (rig.cardMaps.contains(id)) {
+                            say("Map #" + id + " is already in the table.");
+                            return;
+                        }
+                        rig.cardMaps.add(id);
+                        SelfFakes.save();
+                        say("Map #" + id + " is frame " + rig.cardMaps.size() + ".");
+                    });
+            button("Clear the table", x + 256, y, 150, () -> {
+                rig.cardMaps.clear();
+                rig.resetCardMaps();
+                SelfFakes.save();
+                say("Frames cleared. Cards go on slips only.");
+            });
+            y += 30;
+        }
+
         if (rig.hasSides()) {
             int column = 0;
             for (String side : rig.sideNames()) {
@@ -305,6 +332,7 @@ public class RyneRigScreen extends Screen {
             }
             button("New hand", x + column * 146, y, 110, () -> {
                 ClientDispensers.newHand();
+                rig.resetCardMaps();
                 SelfFakes.save();
                 say("Fresh hands.");
             });

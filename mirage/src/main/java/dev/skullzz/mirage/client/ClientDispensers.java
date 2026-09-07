@@ -666,8 +666,18 @@ public final class ClientDispensers {
         int number = profile.chooseCard(side, random);
         profile.handFor(side).add(number);
 
-        note("dealt " + RigProfile.cardName(number) + " to " + side + ", now on "
-                + profile.totalFor(side));
+        // Onto the next frame's map, when the table is built out of them. A face the map
+        // font has no glyph for would paint as blanks, so it is left alone instead -- the
+        // slip still carries the card either way.
+        String face = RigProfile.cardName(number);
+        int mapId = profile.nextCardMap();
+        if (mapId >= 0 && MapArt.canDrawAll(face)) {
+            if (!MapArt.paint(mapId, MapArt.render(face, MapArt.BLACK, MapArt.WHITE))) {
+                warn("Could not paint map #" + mapId + ": " + MapArt.lastReason());
+            }
+        }
+
+        note("dealt " + face + " to " + side + ", now on " + profile.totalFor(side));
         // Built to match the laid-out card exactly, so it empties that slot on the way out.
         return new FakeSpec(slip, 1, "", null, null, RigProfile.cardName(number));
     }

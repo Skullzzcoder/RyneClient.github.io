@@ -42,6 +42,9 @@ public class RyneClickScreen extends Screen {
     /** Whether the button was down last frame, so a press and a release can be told apart. */
     private boolean wasDown;
 
+    /** Shared, so the trail carries across when one menu opens another. */
+    private static final RyneCursor CURSOR = new RyneCursor();
+
     public RyneClickScreen() {
         this(null);
     }
@@ -263,8 +266,14 @@ public class RyneClickScreen extends Screen {
             }
             RyneLayout.save(GUI);
         }
+        // The press edge, before wasDown is moved on: a ring per click, not one per frame
+        // the button is held down.
+        if (down && !this.wasDown && mouse != null) CURSOR.click((int) px, (int) py);
         this.wasDown = down;
         if (down && GUI.isDragging()) GUI.dragTo(px, py, this.width, this.height);
+
+        if (mouse != null) CURSOR.move((int) px, (int) py);
+        CURSOR.tick(seconds);
 
         this.shown = RyneGui.ease(this.shown, 1f, FADE_SPEED, seconds);
         GUI.tick(seconds, px, py);
@@ -280,6 +289,10 @@ public class RyneClickScreen extends Screen {
         RyneDraw.text(context, this.textRenderer,
                 "drag a title to move it - it snaps to edges - click it to fold it away",
                 8, this.height - 12, RyneGui.fade(theme.dim, this.shown));
+
+        // Last, so it is over the panels rather than under them -- a trail that vanishes
+        // behind the thing you are pointing at is worse than no trail.
+        if (RyneCursor.on()) RyneDraw.cursor(context, CURSOR, theme.accent);
     }
 
     private void paint(DrawContext context, RyneGui.Panel panel, RyneTheme.Theme theme) {

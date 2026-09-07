@@ -165,8 +165,16 @@ screen = io.open("src/main/java/dev/skullzz/mirage/client/RyneRigScreen.java",
 for mode in MODES:
     check("the rig menu offers %s" % mode, "Keys." + mode in screen)
 check("and picking one switches through setGame", "setGame(pick)" in screen)
+# The rows below the picker belong to whichever game was on, so switching has to rebuild
+# the screen. say() is what does it -- it reopens -- so the picker must go through it.
+picker = re.search(r"for \(RigProfile\.Keys game : GAMES\) \{(.*?)\n            \}",
+                   screen, re.S)
+# A call, with its message -- the comment above it in the picker says the word "say()"
+# and the first version of this check happily matched that instead.
 check("and rebuilds the menu, since the rows below belong to the old game",
-      "setScreen(new RyneRigScreen())" in screen)
+      picker is not None and 'say("' in picker.group(1))
+check("reopening is what a rebuild is here",
+      "setScreen(new RyneRigScreen(" in screen)
 
 print("FAILED: " + "; ".join(fails) if fails else
       "F and R follow the rig across %s; labels, dispatch and status all read from keys()"

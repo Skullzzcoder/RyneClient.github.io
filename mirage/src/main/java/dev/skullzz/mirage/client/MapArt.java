@@ -83,6 +83,15 @@ public final class MapArt {
      * <p>The scale is worked out from the text rather than fixed, so one character fills the
      * map and three share it, and both are as big as the space allows.
      */
+    /** Whether every character of a face has a glyph, so it will not paint as blanks. */
+    public static boolean canDrawAll(String text) {
+        if (text == null || text.isEmpty()) return false;
+        for (int i = 0; i < text.length(); i++) {
+            if (!canDraw(text.charAt(i))) return false;
+        }
+        return true;
+    }
+
     public static byte[] render(String text, byte ink, byte paper) {
         byte[] pixels = new byte[SIZE * SIZE];
         java.util.Arrays.fill(pixels, paper);

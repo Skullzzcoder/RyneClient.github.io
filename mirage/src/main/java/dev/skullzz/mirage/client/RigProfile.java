@@ -94,6 +94,20 @@ public final class RigProfile {
     /** Whether the caller is to be right. Off means the house takes it. */
     public boolean callerWins;
 
+    /**
+     * Map ids to paint each dealt card onto, in the order they are dealt.
+     *
+     * <p>For a table built out of item frames: put a map in each frame, tell the rig which
+     * ids they are, and every card dealt is painted onto the next one. The frames are then
+     * the hand, and nobody has to read a slip.
+     *
+     * <p>Empty means the table is slips only, which is what it was before.
+     */
+    public final java.util.List<Integer> cardMaps = new ArrayList<>();
+
+    /** How far along the frames the deal has got. Never saved: a part-dealt hand is not state. */
+    public int cardMapAt;
+
     /** Drawn once per round and shared by both machines. Never saved. */
     public int highRoll = 9;
     public int lowRoll = 1;
@@ -522,6 +536,25 @@ public final class RigProfile {
      * Ties among equally good cards are broken at random, so a table played twice does not
      * deal the same shoe twice.
      */
+    /**
+     * The map id the next dealt card is painted onto, or -1 for a table with no frames.
+     *
+     * <p>Wraps, so a table with four frames deals round them rather than stopping dead at
+     * the fifth card.
+     */
+    public int nextCardMap() {
+        if (this.cardMaps.isEmpty()) return -1;
+
+        int id = this.cardMaps.get(Math.floorMod(this.cardMapAt, this.cardMaps.size()));
+        this.cardMapAt++;
+        return id;
+    }
+
+    /** Back to the first frame, for a fresh hand. */
+    public void resetCardMaps() {
+        this.cardMapAt = 0;
+    }
+
     public int chooseCard(String side, Random random) {
         // Nothing named is an honest deal.
         if (this.winner.isEmpty()) return 1 + random.nextInt(Math.max(1, this.cards));
