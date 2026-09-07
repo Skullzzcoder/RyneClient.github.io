@@ -60,6 +60,40 @@ public final class RigProfile {
     /** How often a round the house takes is drawn level instead, in percent. Off by default. */
     public int tieChance;
 
+    /**
+     * Race mode: three lanes of horse armour, and whichever lands all three pieces first
+     * has won.
+     *
+     * <p>The order is drawn once for the whole race by {@link Games#race} and then handed
+     * out one piece per fire, so every machine in the line is reading from the same run.
+     * Drawing per fire instead would let two lanes finish in the same race.
+     */
+    public boolean race;
+    /** Which lane is to win. Empty leaves it to chance. */
+    public String raceWinner = "";
+    /** The run in progress, front first. Never saved: a half-finished race is not state. */
+    public final java.util.List<String> raceOrder = new ArrayList<>();
+
+    /**
+     * Odd-or-even mode: one number comes out and the call was made before it did.
+     *
+     * <p>Shares the paper game's slips and bounds; only what decides the round differs,
+     * which is why it is a flag beside {@code paper} rather than a copy of it.
+     */
+    public boolean oddEven;
+
+    /**
+     * What the other side called, for the two games that have a call.
+     *
+     * <p>"high"/"low" or "odd"/"even". Kept because the rig cannot know it otherwise, and
+     * a round drawn against the wrong call comes out backwards -- the one failure that
+     * looks exactly like bad luck.
+     */
+    public String call = "";
+
+    /** Whether the caller is to be right. Off means the house takes it. */
+    public boolean callerWins;
+
     /** Drawn once per round and shared by both machines. Never saved. */
     public int highRoll = 9;
     public int lowRoll = 1;
@@ -166,12 +200,19 @@ public final class RigProfile {
      * of the three that need it -- the keys themselves, what they are labelled, and what the
      * status line says -- is the only way the label and the key can be trusted to agree.
      */
-    public enum Keys { BLACKJACK, PAPER, ROULETTE, CYCLED }
+    public enum Keys { BLACKJACK, RACE, ODD_EVEN, PAPER, ROULETTE, CYCLED }
 
     public Keys keys() {
         // Ordered, because a rig may carry more than one mode flag: an older file can hold
         // a paper rig that was once a roulette one. First match wins, everywhere.
+        //
+        // The race and odd-even come above paper deliberately. Odd-even sets the paper flag
+        // too, because it borrows the slips and the bounds -- so were paper tested first,
+        // an odd-even rig would quietly deal a plain high-low round instead and the call
+        // would never be read at all.
         if (this.blackjack) return Keys.BLACKJACK;
+        if (this.race) return Keys.RACE;
+        if (this.oddEven) return Keys.ODD_EVEN;
         if (this.paper) return Keys.PAPER;
         if (this.roulette) return Keys.ROULETTE;
         return Keys.CYCLED;
@@ -181,7 +222,9 @@ public final class RigProfile {
     public String mode() {
         switch (keys()) {
             case BLACKJACK: return "blackjack";
-            case PAPER: return "paper game";
+            case RACE: return "horse race";
+            case ODD_EVEN: return "odd or even";
+            case PAPER: return "high-low";
             case ROULETTE: return "roulette";
             default: return this.mix ? "45/45/10" : "cycled";
         }
@@ -191,6 +234,8 @@ public final class RigProfile {
     public String forwardLabel() {
         switch (keys()) {
             case BLACKJACK: return "next winner";
+            case RACE: return "next lane to win";
+            case ODD_EVEN: return "the call is right";
             case PAPER: return "next winner";
             case ROULETTE: return "arm the loaded shot";
             default: return "next item";
@@ -201,6 +246,8 @@ public final class RigProfile {
     public String backLabel() {
         switch (keys()) {
             case BLACKJACK: return "previous winner";
+            case RACE: return "previous lane";
+            case ODD_EVEN: return "the call is wrong";
             case PAPER: return "previous winner";
             case ROULETTE: return "cancel the arm";
             default: return "previous item";
@@ -613,6 +660,59 @@ public final class RigProfile {
      * it costs nothing. A round the player is meant to take never can, because a draw
      * would hand them the loss the rigging is there to avoid.
      */
+    /**
+     * The next piece of armour in the race, drawing a fresh run when the last one is out.
+     *
+     * <p>The queue gets first say, exactly as it does for a paper round: an entry naming a
+     * lane sets the winner of the run about to be drawn and is spent doing it. Spending it
+     * per piece instead would burn nine entries on one race.
+     */
+    public String nextRacePiece(Random random) {
+        if (this.raceOrder.isEmpty()) {
+            String queued = this.queue.peek();
+            if (queued != null) {
+                if (Games.isLane(queued)) this.raceWinner = queued;
+                // Names something no lane answers to. Dropped rather than left to jam the
+                // queue behind an entry this game can never satisfy.
+                this.queue.take();
+            }
+            this.raceOrder.addAll(Games.race(this.raceWinner, random));
+        }
+        return this.raceOrder.isEmpty() ? "" : this.raceOrder.remove(0);
+    }
+
+    /** Throws away a part-run race, so the next fire starts a clean one. */
+    public void resetRace() {
+        this.raceOrder.clear();
+    }
+
+    /** How far through the run the race is, for saying so on screen. */
+    public String racePosition() {
+        int all = Games.LANES.size() * Games.RACE_LENGTH;
+        return this.raceOrder.isEmpty() ? "ready"
+                : (all - this.raceOrder.size()) + "/" + all;
+    }
+
+    /**
+     * The number an odd-or-even round deals.
+     *
+     * <p>The queue names whether the caller is right, so a run can be lined up the same way
+     * every other game here lines one up.
+     */
+    public int nextOddEven(Random random) {
+        String queued = this.queue.peek();
+        if (queued != null) {
+            String clean = queued.trim();
+            if (clean.equalsIgnoreCase("win") || clean.equalsIgnoreCase("lose")) {
+                this.callerWins = clean.equalsIgnoreCase("win");
+                this.queue.take();
+            } else {
+                this.queue.take();
+            }
+        }
+        return Games.oddEven(this.call, this.callerWins, this.numbers, random);
+    }
+
     public void startRound(Random random, long tick) {
         this.roundTick = tick;
 
@@ -694,6 +794,7 @@ public final class RigProfile {
     public boolean isEmpty() {
         return this.presets.isEmpty() && this.perDispenser.isEmpty()
                 && this.arrowTarget == null && !this.roulette && !this.paper && !this.blackjack
+                && !this.race && !this.oddEven
                 && !this.mix && this.stock.isEmpty();
     }
 }

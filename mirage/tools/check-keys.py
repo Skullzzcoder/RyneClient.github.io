@@ -20,7 +20,7 @@ def body(src, sig):
 MODES = re.search(r"public enum Keys \{(.*?)\}", rig).group(1)
 MODES = [m.strip() for m in MODES.split(",") if m.strip()]
 check("there is a name for each shape of rigging", sorted(MODES)
-      == ["BLACKJACK", "CYCLED", "PAPER", "ROULETTE"])
+      == ["BLACKJACK", "CYCLED", "ODD_EVEN", "PAPER", "RACE", "ROULETTE"])
 
 keys = body(rig, "public Keys keys() {")
 for mode in MODES:

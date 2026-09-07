@@ -74,7 +74,20 @@ start = body(rig, "public void startRound(Random random, long tick) {")
 check("a queued winner is spent at the start of a round", "this.queue.take()" in start)
 # Counted by where rather than how many: a magic number says something changed, not what,
 # and I got the number wrong the first time I wrote it down.
-inside = start.count("this.queue.take()") + take.count("this.queue.take()")
+# A round is decided once, however many machines fire in it, so every game that has a
+# round needs exactly one place that may spend an entry: the paper round, the race (once
+# per run of nine pieces, not once per piece), and the odd-even draw.
+race = body(rig, "public String nextRacePiece(Random random) {")
+oddEven = body(rig, "public int nextOddEven(Random random) {")
+check("a queued lane is spent when a race is drawn", "this.queue.take()" in race)
+check("and only when a fresh run is drawn, not once per piece",
+      "if (this.raceOrder.isEmpty()) {" in race
+      and race.index("if (this.raceOrder.isEmpty()) {") < race.index("this.queue.take()"))
+check("a queued call outcome is spent on an odd-even draw",
+      "this.queue.take()" in oddEven)
+
+inside = (start.count("this.queue.take()") + take.count("this.queue.take()")
+          + race.count("this.queue.take()") + oddEven.count("this.queue.take()"))
 check("nothing outside those two methods takes from the queue (%d of %d)"
       % (inside, rig.count("this.queue.take()")),
       inside == rig.count("this.queue.take()"))

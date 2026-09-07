@@ -916,6 +916,12 @@ public class MirageClient implements ClientModInitializer {
             case PAPER:
                 stepWinner(client, delta);
                 break;
+            case RACE:
+                stepRaceLane(client, delta);
+                break;
+            case ODD_EVEN:
+                setCallerWins(client, delta > 0);
+                break;
             case ROULETTE:
                 setArmed(client, delta > 0);
                 break;
@@ -923,6 +929,30 @@ public class MirageClient implements ClientModInitializer {
                 selectPreset(client, delta);
                 break;
         }
+    }
+
+    /** Walks the winning lane along, so the race key means what the rig is. */
+    private static void stepRaceLane(MinecraftClient client, int delta) {
+        RigProfile profile = ClientDispensers.active();
+        java.util.List<String> lanes = Games.LANES;
+        int at = lanes.indexOf(profile.raceWinner);
+        // Off the end either way lands on chance, so the run of positions is
+        // chance, diamond, gold, bronze and back -- one key walks all four.
+        int next = at + delta;
+        profile.raceWinner = next < 0 || next >= lanes.size() ? "" : lanes.get(next);
+        // A run already part way out was drawn for the old lane.
+        profile.resetRace();
+        SelfFakes.save();
+        say(client, profile.raceWinner.isEmpty() ? "race: chance"
+                : "race: " + profile.raceWinner);
+    }
+
+    /** Says whether the call comes in right, from the same key the other games use. */
+    private static void setCallerWins(MinecraftClient client, boolean right) {
+        RigProfile profile = ClientDispensers.active();
+        profile.callerWins = right;
+        SelfFakes.save();
+        say(client, right ? "their call comes in right" : "their call comes in wrong");
     }
 
     /**
@@ -2040,6 +2070,11 @@ public class MirageClient implements ClientModInitializer {
                     SelfFakes.save();
                     return feedback(context, "Chamber count back to zero.");
                 }))
+                .then(ClientCommandManager.literal("call")
+                        .then(ClientCommandManager.argument("call", StringArgumentType.word())
+                                .executes(MirageClient::setCall)))
+                .then(raceBranch())
+                .then(oddEvenBranch())
                 .then(paperBranch())
                 .then(blackjackBranch())
                 .then(rouletteBranch())
@@ -2145,6 +2180,109 @@ public class MirageClient implements ClientModInitializer {
                                     return feedback(context, "Cards are now "
                                             + profile.slipItem + ". Fill the machines again.");
                                 })));
+    }
+
+    /**
+     * Records what the other side called.
+     *
+     * <p>The rig has no way to know it otherwise, and a round drawn against the wrong call
+     * comes out backwards -- which on screen is indistinguishable from bad luck, so a call
+     * this game does not have is refused rather than guessed at.
+     */
+    private static int setCall(CommandContext<FabricClientCommandSource> context) {
+        String call = StringArgumentType.getString(context, "call").toLowerCase(
+                java.util.Locale.ROOT);
+        RigProfile profile = ClientDispensers.active();
+        java.util.List<String> allowed = Games.callsFor(profile.oddEven);
+        if (!allowed.contains(call)) {
+            return error(context, "'" + call + "' is not a call for " + profile.mode()
+                    + ". It is " + String.join(" or ", allowed) + ".");
+        }
+
+        profile.call = call;
+        SelfFakes.save();
+        return feedback(context, "They called " + call + ". "
+                + (profile.callerWins ? "It comes in right." : "It comes in wrong."));
+    }
+
+    /** The horse race: three lanes of armour, and the one that lands all three first. */
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> raceBranch() {
+        return ClientCommandManager.literal("race")
+                .then(ClientCommandManager.literal("on").executes(context -> {
+                    RigProfile profile = ClientDispensers.active();
+                    profile.race = true;
+                    profile.resetRace();
+                    SelfFakes.save();
+                    return feedback(context, "Horse race on. Lanes are diamond, gold and "
+                            + "bronze (iron armour). Fill the line, then flip it -- one "
+                            + "piece comes out per fire and first to three wins.");
+                }))
+                .then(ClientCommandManager.literal("off").executes(context -> {
+                    RigProfile profile = ClientDispensers.active();
+                    profile.race = false;
+                    profile.resetRace();
+                    SelfFakes.save();
+                    return feedback(context, "Horse race off for this rig.");
+                }))
+                .then(ClientCommandManager.literal("reset").executes(context -> {
+                    ClientDispensers.active().resetRace();
+                    return feedback(context, "Race cleared. The next fire starts a new one.");
+                }))
+                .then(ClientCommandManager.literal("winner")
+                        .then(ClientCommandManager.literal("chance").executes(context -> {
+                            RigProfile profile = ClientDispensers.active();
+                            profile.raceWinner = "";
+                            profile.resetRace();
+                            SelfFakes.save();
+                            return feedback(context, "Left to chance.");
+                        }))
+                        .then(ClientCommandManager.argument("lane", StringArgumentType.word())
+                                .executes(MirageClient::setRaceWinner)));
+    }
+
+    private static int setRaceWinner(CommandContext<FabricClientCommandSource> context) {
+        String lane = StringArgumentType.getString(context, "lane");
+        if (!Games.isLane(lane)) {
+            return error(context, "No lane called '" + lane + "'. It is "
+                    + String.join(", ", Games.LANES) + " (bronze works for iron).");
+        }
+
+        RigProfile profile = ClientDispensers.active();
+        profile.raceWinner = lane;
+        // A run already part way out was drawn for the old winner, so it has to go --
+        // otherwise the change appears to do nothing until the race after next.
+        profile.resetRace();
+        SelfFakes.save();
+        return feedback(context, lane + " takes the next race.");
+    }
+
+    /** Odd or even: they call it, one number comes out. */
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> oddEvenBranch() {
+        return ClientCommandManager.literal("oddeven")
+                .then(ClientCommandManager.literal("on").executes(context -> {
+                    RigProfile profile = ClientDispensers.active();
+                    profile.oddEven = true;
+                    SelfFakes.save();
+                    return feedback(context, "Odd or even on. Take their call with "
+                            + "/fake rig call odd (or even), then flip it.");
+                }))
+                .then(ClientCommandManager.literal("off").executes(context -> {
+                    ClientDispensers.active().oddEven = false;
+                    SelfFakes.save();
+                    return feedback(context, "Odd or even off for this rig.");
+                }))
+                .then(ClientCommandManager.literal("they").executes(context -> {
+                    RigProfile profile = ClientDispensers.active();
+                    profile.callerWins = true;
+                    SelfFakes.save();
+                    return feedback(context, "Their call comes in right.");
+                }))
+                .then(ClientCommandManager.literal("you").executes(context -> {
+                    RigProfile profile = ClientDispensers.active();
+                    profile.callerWins = false;
+                    SelfFakes.save();
+                    return feedback(context, "Their call comes in wrong.");
+                }));
     }
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> paperBranch() {

@@ -30,7 +30,9 @@ for mode in modes:
     # These say how a rig behaves, not that it has been set up: two are what the arm key
     # sets for the next shot, one is whether a rig is armed rather than counted, and one is
     # whether output is placed or thrown. A rig carrying only these is still an empty rig.
-    transient = ("armed", "manualTrigger", "bustNext", "placeOutput")
+    # callerWins joins them: it says which way the next called round goes, not that a rig
+    # has been set up. A rig carrying only these is still an empty rig.
+    transient = ("armed", "manualTrigger", "bustNext", "placeOutput", "callerWins")
     check("mode '%s' is missing from isEmpty" % mode, mode in empty or mode in transient)
 
 # the paper rig specifically has to be upgraded in place, since a user may have set one up

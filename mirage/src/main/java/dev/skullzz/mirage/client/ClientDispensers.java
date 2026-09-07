@@ -502,6 +502,10 @@ public final class ClientDispensers {
             FakeSpec result;
             if (profile.roulette) {
                 result = profile.advanceRoulette();
+            } else if (profile.race) {
+                result = racePiece(profile);
+            } else if (profile.oddEven) {
+                result = oddEvenSlip(profile);
             } else if (profile.paper) {
                 result = paperSlip(profile, fire.pos());
             } else if (profile.blackjack) {
@@ -570,6 +574,45 @@ public final class ClientDispensers {
      * numbers, and the second takes the other half, so the two always disagree and the rigged
      * side always has the higher one.
      */
+    /**
+     * One piece of horse armour out of the race in progress.
+     *
+     * <p>Which machine fired does not matter: the run is drawn once and every dispenser in
+     * the line takes the next piece off it, which is what makes it one race rather than
+     * three machines each having their own.
+     */
+    private static FakeSpec racePiece(RigProfile profile) {
+        String lane = profile.nextRacePiece(random);
+        if (lane.isEmpty()) return null;
+
+        Item armour = SelfFakes.lookupItem(Games.armourFor(lane));
+        if (armour == null) {
+            warn("No item for the " + lane + " lane.");
+            return null;
+        }
+
+        note(lane + "  -  " + profile.racePosition()
+                + (profile.raceOrder.isEmpty() ? "  (race over)" : ""));
+        return new FakeSpec(armour, 1, "", null, null, "");
+    }
+
+    /** The single numbered slip an odd-or-even round comes down to. */
+    private static FakeSpec oddEvenSlip(RigProfile profile) {
+        if (profile.call.isEmpty()) {
+            warn("Nobody has called yet -- /fake rig call odd, or even.");
+            return null;
+        }
+
+        Item slip = SelfFakes.lookupItem(profile.slipItem);
+        if (slip == null) return null;
+
+        int number = profile.nextOddEven(random);
+        note(number + "  -  called " + profile.call + ", "
+                + (Games.oddEvenTheyWin(profile.call, number) ? "they take it"
+                        : "you take it"));
+        return new FakeSpec(slip, 1, "", null, null, String.valueOf(number));
+    }
+
     private static FakeSpec paperSlip(RigProfile profile, BlockPos pos) {
         // The side first: a round drawn before any machine had one has no winner to give
         // the high number to, so both machines take the low one.
