@@ -28,7 +28,7 @@ import net.minecraft.text.Text;
  * Minecraft in it and is run by check-gui.py. Being four pixels out is invisible in a
  * screenshot and obvious in use.
  */
-public class RyneClickScreen extends Screen implements RyneClickScreen.Clicks {
+public class RyneClickScreen extends Screen implements RyneClicks {
 
     /** How long the whole menu takes to fade in, in seconds. */
     private static final float FADE_SPEED = 16f;
@@ -48,10 +48,7 @@ public class RyneClickScreen extends Screen implements RyneClickScreen.Clicks {
         return GUI;
     }
 
-    /** A screen that wants the click event. Both layouts do, and they want it the same way. */
-    public interface Clicks {
-        void onClick();
-    }
+
 
     private final Screen parent;
     private float shown;
@@ -226,12 +223,13 @@ public class RyneClickScreen extends Screen implements RyneClickScreen.Clicks {
      */
     public static void register() {
         ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
-            if (!(screen instanceof Clicks menu)) return;
+            if (!(screen instanceof RyneClicks menu)) return;
             listen(ScreenMouseEvents.allowMouseClick(screen), menu);
         });
     }
 
-    private static void listen(Event<ScreenMouseEvents.AllowMouseClick> event, Clicks menu) {
+    private static void listen(Event<ScreenMouseEvents.AllowMouseClick> event,
+                               RyneClicks menu) {
         Object listener = Proxy.newProxyInstance(
                 RyneClickScreen.class.getClassLoader(),
                 new Class<?>[] { ScreenMouseEvents.AllowMouseClick.class },

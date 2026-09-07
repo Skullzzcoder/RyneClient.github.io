@@ -26,7 +26,7 @@ import net.minecraft.text.Text;
  * check-gui.py. A tab whose hit box is not quite where it was drawn is invisible until it
  * starts clicking the neighbour.
  */
-public class RyneBarScreen extends Screen implements RyneClickScreen.Clicks {
+public class RyneBarScreen extends Screen implements RyneClicks {
 
     private static final float FADE_SPEED = 16f;
 
