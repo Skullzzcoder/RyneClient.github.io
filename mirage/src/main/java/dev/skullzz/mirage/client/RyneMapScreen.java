@@ -266,7 +266,12 @@ public class RyneMapScreen extends Screen {
         this.client.setScreen(new RyneMapScreen(this.parent, this.said));
     }
 
-    private void close() {
+    /**
+     * Public because it overrides Screen's own, which is public. Every other screen here
+     * gets this right; this one was written from scratch and did not.
+     */
+    @Override
+    public void close() {
         if (this.client != null) this.client.setScreen(this.parent);
     }
 

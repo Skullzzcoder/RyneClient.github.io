@@ -166,12 +166,16 @@ public class RyneRigScreen extends Screen {
         // underneath it and the menu still showed that game's rows. One row, one game,
         // and picking one turns every other off.
         RigProfile.Keys now = rig.keys();
-        int column = 0;
+        // Named for what it is rather than "column": this one sits at method scope, and
+        // two of the blocks below already declare a column of their own inside an if.
+        // Java will not let an inner block shadow an enclosing local, so sharing the name
+        // is not a shadow -- it is a compile error in the blocks that were here first.
+        int tab = 0;
         for (RigProfile.Keys game : GAMES) {
             RigProfile.Keys pick = game;
             boolean chosen = now == game;
             String label = (chosen ? "> " : "  ") + gameName(game);
-            button(label, x + column * 104, y, 98, () -> {
+            button(label, x + tab * 104, y, 98, () -> {
                 ClientDispensers.active().setGame(pick);
                 SelfFakes.save();
                 // say() reopens the screen, which is what rebuilds it -- and the rows
@@ -180,7 +184,7 @@ public class RyneRigScreen extends Screen {
                 // ever watched that compile.)
                 say("Now playing: " + ClientDispensers.active().mode() + ".");
             });
-            column++;
+            tab++;
         }
 
         y += 30;
