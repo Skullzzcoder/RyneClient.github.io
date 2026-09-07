@@ -132,6 +132,42 @@ check("the status line carries it",
       'lines.add("  F " + profile.forwardLabel() + ", R " + profile.backLabel());' in disp)
 check("there is a key list", 'literal("keys")' in mc and "listKeys" in mc)
 
+# ------------------------------------------------------- one game at a time
+#
+# The mode flags were independent, and turning one on left the last one on underneath.
+# keys() picks a winner by priority so it looked like it worked -- the rig reported the
+# new game and dealt it -- but the old game was still set, so its rows stayed in the menu
+# and turning the new one off dropped back into a game you thought you had left.
+GAME_FLAGS = ["paper", "blackjack", "roulette", "race", "oddEven"]
+setGame = body(rig, "public void setGame(Keys game) {")
+for flag in GAME_FLAGS:
+    check("setGame turns %s on for its own game and off for every other" % flag,
+          "this.%s = game == Keys." % flag in setGame)
+check("and drops whatever the last game had half finished",
+      "resetRace();" in setGame and "roundTick = Long.MIN_VALUE;" in setGame)
+
+# setGame is the only place allowed to set one, so there is one answer to what a rig is.
+# The exception is loading: a file may hold two flags, and restoring it is not switching.
+# Any assignment at all, however the profile was reached -- profile.paper,
+# ClientDispensers.active().paper, a local. The first version of this check listed the
+# prefixes it expected and so missed the one the command actually used.
+for flag in GAME_FLAGS:
+    # A dot in front, so this is a field being set rather than a local being
+    # declared -- there is a RigProfile local actually named "paper".
+    outside = re.findall(r"\.\s*" + flag + r"\s*=\s*(?!=)", mc)
+    check("nothing in the commands sets %s directly, they go through setGame" % flag,
+          not outside)
+
+# The menu has to offer every game, or one exists that can only be reached by command --
+# which is how a rig ends up stuck in a game with no way out of it on screen.
+screen = io.open("src/main/java/dev/skullzz/mirage/client/RyneRigScreen.java",
+                 encoding="utf-8").read()
+for mode in MODES:
+    check("the rig menu offers %s" % mode, "Keys." + mode in screen)
+check("and picking one switches through setGame", "setGame(pick)" in screen)
+check("and rebuilds the menu, since the rows below belong to the old game",
+      "setScreen(new RyneRigScreen())" in screen)
+
 print("FAILED: " + "; ".join(fails) if fails else
       "F and R follow the rig across %s; labels, dispatch and status all read from keys()"
       % ", ".join(m.lower() for m in MODES))

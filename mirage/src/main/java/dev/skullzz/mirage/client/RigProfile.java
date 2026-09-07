@@ -206,16 +206,41 @@ public final class RigProfile {
         // Ordered, because a rig may carry more than one mode flag: an older file can hold
         // a paper rig that was once a roulette one. First match wins, everywhere.
         //
-        // The race and odd-even come above paper deliberately. Odd-even sets the paper flag
-        // too, because it borrows the slips and the bounds -- so were paper tested first,
-        // an odd-even rig would quietly deal a plain high-low round instead and the call
-        // would never be read at all.
+        // Only one of these is ever set now -- setGame sees to that -- so the order below
+        // no longer decides anything. It is kept because a file written before that change
+        // can hold two flags at once, and a rig loaded from one has to land on a game
+        // rather than on whichever branch happened to come first.
         if (this.blackjack) return Keys.BLACKJACK;
         if (this.race) return Keys.RACE;
         if (this.oddEven) return Keys.ODD_EVEN;
         if (this.paper) return Keys.PAPER;
         if (this.roulette) return Keys.ROULETTE;
         return Keys.CYCLED;
+    }
+
+    /**
+     * Switches the rig to one game, and off every other.
+     *
+     * <p>These were independent flags, and turning one on left the last one on underneath.
+     * {@link #keys()} picks a winner by priority, so it looked like it worked -- the rig
+     * reported the new game and dealt it. But the old game was still set, so its rows were
+     * still in the menu, its state was still saved, and turning the new one off dropped
+     * back into a game you thought you had left rather than into a plain cycled rig.
+     *
+     * <p>One game at a time is what everything else here already assumes. This is the only
+     * place that may set a mode flag, so there is one answer to what game a rig is.
+     */
+    public void setGame(Keys game) {
+        this.paper = game == Keys.PAPER;
+        this.blackjack = game == Keys.BLACKJACK;
+        this.roulette = game == Keys.ROULETTE;
+        this.race = game == Keys.RACE;
+        this.oddEven = game == Keys.ODD_EVEN;
+
+        // Whatever the game being left had half finished belongs to it, not to the next
+        // one: a part-run race handed to a paper game deals its slips out of an armour run.
+        this.resetRace();
+        this.roundTick = Long.MIN_VALUE;
     }
 
     /** What game this is, in a word, for saying which one you have just switched to. */

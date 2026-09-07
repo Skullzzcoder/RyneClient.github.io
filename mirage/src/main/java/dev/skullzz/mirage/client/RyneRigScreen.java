@@ -112,6 +112,23 @@ public class RyneRigScreen extends Screen {
         button("Done", right() - PAD - 90, bottom() - PAD - 20, 90, this::close);
     }
 
+    /** Every game a rig can be, in the order they are offered. */
+    private static final java.util.List<RigProfile.Keys> GAMES = java.util.List.of(
+            RigProfile.Keys.CYCLED, RigProfile.Keys.PAPER, RigProfile.Keys.RACE,
+            RigProfile.Keys.ODD_EVEN, RigProfile.Keys.BLACKJACK, RigProfile.Keys.ROULETTE);
+
+    /** Short enough for a button. mode() is the sentence version. */
+    private static String gameName(RigProfile.Keys game) {
+        switch (game) {
+            case PAPER: return "High-low";
+            case RACE: return "Race";
+            case ODD_EVEN: return "Odd/even";
+            case BLACKJACK: return "Blackjack";
+            case ROULETTE: return "Roulette";
+            default: return "Items";
+        }
+    }
+
     /** The controls this particular game has, and only those. */
     private void buildControls(RigProfile rig) {
         int x = panel();
@@ -144,6 +161,30 @@ public class RyneRigScreen extends Screen {
 
         y += 30;
 
+        // Which game this rig is. There was no way to switch here at all -- the modes were
+        // command-only and, worse, independent, so turning one on left the last one on
+        // underneath it and the menu still showed that game's rows. One row, one game,
+        // and picking one turns every other off.
+        RigProfile.Keys now = rig.keys();
+        int column = 0;
+        for (RigProfile.Keys game : GAMES) {
+            RigProfile.Keys pick = game;
+            boolean chosen = now == game;
+            String label = (chosen ? "> " : "  ") + gameName(game);
+            button(label, x + column * 104, y, 98, () -> {
+                ClientDispensers.active().setGame(pick);
+                SelfFakes.save();
+                say("Now playing: " + ClientDispensers.active().mode() + ".");
+                // The rows below belong to the game that was on, so the menu is rebuilt.
+                // Reopening is how: Screen.clearAndInit exists, but nothing in this mod has
+                // ever watched it compile, and setScreen is on every other button here.
+                if (this.client != null) this.client.setScreen(new RyneRigScreen());
+            });
+            column++;
+        }
+
+        y += 30;
+
         // What the rig answers with, stepped the same way F and R step it in game.
         button("< " + rig.backLabel(), x, y, (wide - 8) / 2, () -> {
             ClientDispensers.cyclePreset(-1);
@@ -169,6 +210,60 @@ public class RyneRigScreen extends Screen {
                 rig.resetShots();
                 SelfFakes.save();
                 say("Back to shot 1.");
+            });
+            y += 30;
+        }
+
+        if (rig.race) {
+            int lane = 0;
+            for (String name : Games.LANES) {
+                String pick = name;
+                boolean chosen = name.equals(rig.raceWinner);
+                button((chosen ? "> " : "  ") + name, x + lane * 104, y, 98, () -> {
+                    rig.raceWinner = pick;
+                    rig.resetRace();
+                    SelfFakes.save();
+                    say(pick + " takes the next race.");
+                });
+                lane++;
+            }
+            button(rig.raceWinner.isEmpty() ? "> Chance" : "  Chance", x + lane * 104, y, 98,
+                    () -> {
+                        rig.raceWinner = "";
+                        rig.resetRace();
+                        SelfFakes.save();
+                        say("Left to chance.");
+                    });
+            y += 30;
+            button("Reset race (" + rig.racePosition() + ")", x, y, 150, () -> {
+                rig.resetRace();
+                say("Race cleared. The next fire starts a new one.");
+            });
+            y += 30;
+        }
+
+        if (rig.oddEven) {
+            int called = 0;
+            for (String name : Games.callsFor(true)) {
+                String pick = name;
+                boolean chosen = name.equals(rig.call);
+                button((chosen ? "> " : "  ") + name, x + called * 104, y, 98, () -> {
+                    rig.call = pick;
+                    SelfFakes.save();
+                    say("They called " + pick + ".");
+                });
+                called++;
+            }
+            y += 30;
+            button(rig.callerWins ? "> They win" : "  They win", x, y, 120, () -> {
+                rig.callerWins = true;
+                SelfFakes.save();
+                say("Their call comes in right.");
+            });
+            button(!rig.callerWins ? "> You win" : "  You win", x + 126, y, 120, () -> {
+                rig.callerWins = false;
+                SelfFakes.save();
+                say("Their call comes in wrong.");
             });
             y += 30;
         }

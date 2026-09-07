@@ -2134,14 +2134,14 @@ public class MirageClient implements ClientModInitializer {
         return ClientCommandManager.literal("blackjack")
                 .then(ClientCommandManager.literal("on").executes(context -> {
                     RigProfile profile = ClientDispensers.active();
-                    profile.blackjack = true;
+                    profile.setGame(RigProfile.Keys.BLACKJACK);
                     profile.tidyCards();
                     SelfFakes.save();
                     return feedback(context, "Blackjack on. Press H on each machine to lay a"
                             + " shoe out, then F and R name the card that comes next.");
                 }))
                 .then(ClientCommandManager.literal("off").executes(context -> {
-                    ClientDispensers.active().blackjack = false;
+                    ClientDispensers.active().setGame(RigProfile.Keys.CYCLED);
                     SelfFakes.save();
                     return feedback(context, "Blackjack off for this rig.");
                 }))
@@ -2210,8 +2210,7 @@ public class MirageClient implements ClientModInitializer {
         return ClientCommandManager.literal("race")
                 .then(ClientCommandManager.literal("on").executes(context -> {
                     RigProfile profile = ClientDispensers.active();
-                    profile.race = true;
-                    profile.resetRace();
+                    profile.setGame(RigProfile.Keys.RACE);
                     SelfFakes.save();
                     return feedback(context, "Horse race on. Lanes are diamond, gold and "
                             + "bronze (iron armour). Fill the line, then flip it -- one "
@@ -2219,8 +2218,7 @@ public class MirageClient implements ClientModInitializer {
                 }))
                 .then(ClientCommandManager.literal("off").executes(context -> {
                     RigProfile profile = ClientDispensers.active();
-                    profile.race = false;
-                    profile.resetRace();
+                    profile.setGame(RigProfile.Keys.CYCLED);
                     SelfFakes.save();
                     return feedback(context, "Horse race off for this rig.");
                 }))
@@ -2261,13 +2259,13 @@ public class MirageClient implements ClientModInitializer {
         return ClientCommandManager.literal("oddeven")
                 .then(ClientCommandManager.literal("on").executes(context -> {
                     RigProfile profile = ClientDispensers.active();
-                    profile.oddEven = true;
+                    profile.setGame(RigProfile.Keys.ODD_EVEN);
                     SelfFakes.save();
                     return feedback(context, "Odd or even on. Take their call with "
                             + "/fake rig call odd (or even), then flip it.");
                 }))
                 .then(ClientCommandManager.literal("off").executes(context -> {
-                    ClientDispensers.active().oddEven = false;
+                    ClientDispensers.active().setGame(RigProfile.Keys.CYCLED);
                     SelfFakes.save();
                     return feedback(context, "Odd or even off for this rig.");
                 }))
@@ -2288,13 +2286,13 @@ public class MirageClient implements ClientModInitializer {
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> paperBranch() {
         return ClientCommandManager.literal("paper")
                 .then(ClientCommandManager.literal("on").executes(context -> {
-                    ClientDispensers.active().paper = true;
+                    ClientDispensers.active().setGame(RigProfile.Keys.PAPER);
                     SelfFakes.save();
                     return feedback(context, "Paper game on. Watch the two dispensers and "
                             + "they get a side each, then /fake dispenser fill both.");
                 }))
                 .then(ClientCommandManager.literal("off").executes(context -> {
-                    ClientDispensers.active().paper = false;
+                    ClientDispensers.active().setGame(RigProfile.Keys.CYCLED);
                     SelfFakes.save();
                     return feedback(context, "Paper game off for this rig.");
                 }))
@@ -2393,21 +2391,21 @@ public class MirageClient implements ClientModInitializer {
         return ClientCommandManager.literal("roulette")
                 .then(ClientCommandManager.literal("on").executes(context -> {
                     RigProfile profile = ClientDispensers.active();
-                    profile.roulette = true;
+                    profile.setGame(RigProfile.Keys.ROULETTE);
                     profile.tidyRoulette();
                     SelfFakes.save();
                     return feedback(context, "Rig '" + profile.name + "' now fires on shot "
                             + profile.bulletAt + " of " + profile.chambers + ".");
                 }))
                 .then(ClientCommandManager.literal("off").executes(context -> {
-                    ClientDispensers.active().roulette = false;
+                    ClientDispensers.active().setGame(RigProfile.Keys.CYCLED);
                     SelfFakes.save();
                     return feedback(context, "Roulette off for this rig.");
                 }))
                 .then(ClientCommandManager.literal("manual")
                         .then(ClientCommandManager.literal("on").executes(context -> {
                             RigProfile profile = ClientDispensers.active();
-                            profile.roulette = true;
+                            profile.setGame(RigProfile.Keys.ROULETTE);
                             profile.manualTrigger = true;
                             SelfFakes.save();
                             return feedback(context, "This rig now fires the loaded item only "
