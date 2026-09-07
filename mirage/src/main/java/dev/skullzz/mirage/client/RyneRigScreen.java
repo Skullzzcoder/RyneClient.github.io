@@ -252,9 +252,9 @@ public class RyneRigScreen extends Screen {
         RyneDraw.box(context, left() + SIDEBAR, top(), 1, bottom() - top(), theme.line);
         RyneDraw.box(context, left() + PAD, top() + PAD, 4, 18, theme.accent);
 
-        RyneDraw.text(context, this.textRenderer, "RIGS", left() + PAD + 12, top() + PAD + 5,
+        RyneDraw.heading(context, this.textRenderer, "RIGS", left() + PAD + 12, top() + PAD + 5,
                 theme.text);
-        RyneDraw.text(context, this.textRenderer, "RIG", left() + PAD, top() + 34, theme.dim);
+        RyneDraw.heading(context, this.textRenderer, "RIG", left() + PAD, top() + 34, theme.dim);
 
         super.render(context, mouseX, mouseY, delta);
 

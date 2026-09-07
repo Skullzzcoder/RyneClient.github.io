@@ -308,7 +308,7 @@ public class RyneClickScreen extends Screen {
                     RyneGui.fade(theme.accent, a));
         }
 
-        RyneDraw.text(context, this.textRenderer, panel.title, panel.x + 9, panel.y + 6,
+        RyneDraw.heading(context, this.textRenderer, panel.title, panel.x + 9, panel.y + 6,
                 RyneGui.fade(theme.text, a));
         // A caret that turns as the panel opens, rather than two different characters:
         // the shape moving is what says the click did something.
@@ -351,8 +351,9 @@ public class RyneClickScreen extends Screen {
         }
 
         if (height >= 8) {
-            RyneDraw.text(context, this.textRenderer, row.label, panel.x + 10, y + 5,
-                    RyneGui.fade(on ? theme.accent : theme.text, a));
+            RyneDraw.text(context, this.textRenderer,
+                    RyneType.fit(row.label, RyneGui.PANEL_WIDTH - 34, 0),
+                    panel.x + 10, y + 5, RyneGui.fade(on ? theme.accent : theme.text, a));
             if (row.kind == RyneGui.Kind.TOGGLE) {
                 RyneDraw.box(context, panel.x + RyneGui.PANEL_WIDTH - 18, y + 6, 8, 6,
                         RyneGui.fade(on ? theme.accent : theme.line, a));

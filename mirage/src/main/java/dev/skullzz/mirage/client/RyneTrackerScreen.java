@@ -167,9 +167,9 @@ public class RyneTrackerScreen extends Screen {
                 theme.panel);
         RyneDraw.box(context, left() + PAD, top() + PAD, 4, 16, theme.accent);
 
-        text(context, "SESSIONS", left() + PAD + 12, top() + PAD + 4, theme.text);
-        text(context, "SETTINGS", settings(), top() + PAD + 4, theme.text);
-        text(context, "TRACKER", middle(), top() + PAD + 4, theme.text);
+        head(context, "SESSIONS", left() + PAD + 12, top() + PAD + 4, theme.text);
+        head(context, "SETTINGS", settings(), top() + PAD + 4, theme.text);
+        head(context, "TRACKER", middle(), top() + PAD + 4, theme.text);
 
         // Above the totals, always: a zero because nothing happened and a zero because
         // nothing was heard are the same zero, and only one of them is worth acting on.
@@ -193,6 +193,11 @@ public class RyneTrackerScreen extends Screen {
 
     private void text(DrawContext context, String message, int x, int y, int colour) {
         RyneDraw.text(context, this.textRenderer, message, x, y, colour);
+    }
+
+    /** A section label: capitals, spaced out. What makes a heading read as a heading. */
+    private void head(DrawContext context, String message, int x, int y, int colour) {
+        RyneDraw.heading(context, this.textRenderer, message, x, y, colour);
     }
 
     private void paintSessions(DrawContext context, RyneTheme.Theme theme) {
@@ -225,7 +230,7 @@ public class RyneTrackerScreen extends Screen {
         int y = top() + 44;
         Tracker.Session session = Sessions.current();
 
-        text(context, "SESSION", x, y, theme.dim);
+        head(context, "SESSION", x, y, theme.dim);
         if (session == null) {
             text(context, "--", x, y + 14, theme.text);
             text(context, "start one on the left", x, y + 28, theme.dim);

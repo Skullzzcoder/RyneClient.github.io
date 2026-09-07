@@ -94,6 +94,60 @@ public final class RyneDraw {
         context.drawTextWithShadow(renderer, Text.literal(message), x, y, colour);
     }
 
+    /**
+     * A heading: capitals, spaced out, drawn one character at a time.
+     *
+     * <p>The one thing that most changes how a menu reads. A title set like this stops
+     * looking like a sentence that happens to be at the top and starts looking like a
+     * label -- and it costs nothing but a loop, because it is the same proven call as
+     * every other piece of text, run once per character at an offset {@link RyneType}
+     * worked out.
+     */
+    public static void heading(DrawContext context, TextRenderer renderer, String message,
+                               int x, int y, int colour) {
+        tracked(context, renderer, RyneType.caps(message), x, y, colour, RyneType.TRACKING);
+    }
+
+    /** The same, at a spacing of your choosing. */
+    public static void tracked(DrawContext context, TextRenderer renderer, String message,
+                               int x, int y, int colour, int tracking) {
+        if (message == null || message.isEmpty()) return;
+        if (tracking <= 0) {
+            text(context, renderer, message, x, y, colour);
+            return;
+        }
+
+        int[] offsets = RyneType.offsets(message, tracking);
+        for (int i = 0; i < message.length(); i++) {
+            text(context, renderer, String.valueOf(message.charAt(i)), x + offsets[i], y,
+                    colour);
+        }
+    }
+
+    /** Text ending at {@code right}, for a column of values that should line up. */
+    public static void textRight(DrawContext context, TextRenderer renderer, String message,
+                                 int right, int y, int colour) {
+        text(context, renderer, message, RyneType.rightX(right, message, 0), y, colour);
+    }
+
+    /** Text in the middle of a box that starts at {@code x}. */
+    public static void textCentre(DrawContext context, TextRenderer renderer, String message,
+                                  int x, int width, int y, int colour) {
+        text(context, renderer, message, RyneType.centreX(x, width, message, 0), y, colour);
+    }
+
+    /**
+     * A divider: one faint line with a brighter stub at its left.
+     *
+     * <p>A full-width line at full strength cuts a panel in half. Fading it out is what
+     * makes it read as a separation rather than a border.
+     */
+    public static void rule(DrawContext context, int x, int y, int width, int colour,
+                            int accent) {
+        gradient(context, x, y, width, 1, colour, colour & 0x00FFFFFF);
+        box(context, x, y, Math.min(12, width), 1, accent);
+    }
+
     /** Cut to fit a column, so a long name cannot run into the next one. */
     public static String trim(String message, int most) {
         return message.length() <= most ? message : message.substring(0, most - 1) + "...";

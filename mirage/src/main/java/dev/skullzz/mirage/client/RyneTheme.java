@@ -47,13 +47,18 @@ public final class RyneTheme {
 
     // The greys are shared: only the accent really changes between these, which is what
     // keeps them looking like one set rather than seven unrelated skins.
-    private static final int PAGE = 0xF00B0D12;
-    private static final int PANEL = 0xF0121620;
-    private static final int CARD = 0xFF171C28;
-    private static final int HOVER = 0xFF1E2432;
-    private static final int LINE = 0xFF262D3D;
-    private static final int TEXT = 0xFFE8EAED;
-    private static final int DIM = 0xFF8A90A0;
+    //
+    // Deepened, and spread further apart. The old set ran from 0x0B to 0x26 -- seven
+    // shades inside a sixth of the range, which is why panels, cards and rows all read as
+    // one flat sheet however they were arranged. Depth in a dark interface comes from the
+    // gaps between the greys, not from more of them.
+    private static final int PAGE = 0xF4070910;
+    private static final int PANEL = 0xF40E1219;
+    private static final int CARD = 0xFF161B25;
+    private static final int HOVER = 0xFF212837;
+    private static final int LINE = 0xFF2E3646;
+    private static final int TEXT = 0xFFF2F4F8;
+    private static final int DIM = 0xFF7C8497;
 
     public static final List<Theme> ALL = List.of(
             new Theme("Nova Purple", "Violet and electric blue",
