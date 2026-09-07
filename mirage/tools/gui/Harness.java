@@ -1,4 +1,6 @@
 import dev.skullzz.mirage.client.RyneGui;
+import dev.skullzz.mirage.client.RyneBar;
+import dev.skullzz.mirage.client.RyneType;
 
 /** Drives the click GUI's model and prints what it decided, one case per line. */
 public class Harness {
@@ -69,6 +71,218 @@ public class Harness {
         gui.beginDrag(a, a.x + 5, a.y + 5);
         gui.dragTo(a.x + 40, a.y + 5, 1000, 600);
         check("moving well past the slop is a drag", gui.endDrag() == null);
+
+        // The way a panel is actually dragged: a pixel or two per frame, for a long way.
+        // Every test above moves in one jump, which is why this went unnoticed -- movement
+        // was measured against the panel's position last frame, so a steady drag never
+        // exceeded the slop in any single frame and the panel folded itself away on
+        // release as though it had been tapped.
+        gui.beginDrag(a, a.x + 5, a.y + 5);
+        double slowX = a.x + 5;
+        for (int step = 0; step < 200; step++) {
+            slowX += 1;
+            gui.dragTo(slowX, a.y + 5, 1000, 600);
+        }
+        check("a slow drag across the screen is a drag, not a tap", gui.endDrag() == null);
+
+        // And at an edge, where the panel is clamped and stops moving while the pointer
+        // keeps going. Measured against the panel that reads as no movement at all.
+        gui.beginDrag(a, a.x + 5, a.y + 5);
+        for (int step = 0; step < 300; step++) gui.dragTo(-step, a.y + 5, 1000, 600);
+        check("dragging into an edge is still a drag", gui.endDrag() == null);
+
+        // --- settings: the knobs a right-click opens
+        //
+        // Every one of these is arithmetic that shows up on screen as something stranger
+        // than the number behind it: a slider handle off the end of its track, a mode that
+        // wraps to nothing, a value that reads 5 while holding 5.31.
+        double[] held = { 3 };
+        RyneGui.Setting slider = RyneGui.Setting.slider("size", () -> held[0],
+                v -> held[0] = v, 1, 10, 1);
+        check("a slider starts where its value is", slider.value() == 3);
+        check("and its handle is proportional",
+                Math.abs(slider.fraction() - (3 - 1) / 9.0) < 1e-9);
+
+        slider.setFraction(0);
+        check("dragged to the left end it is the least", slider.value() == 1);
+        slider.setFraction(1);
+        check("and to the right end the most", slider.value() == 10);
+        slider.setFraction(2);
+        check("past the end it is still the most", slider.value() == 10);
+        slider.setFraction(-1);
+        check("and before the start still the least", slider.value() == 1);
+
+        // Snapped when stored, not only when shown.
+        RyneGui.Setting stepped = RyneGui.Setting.slider("step", () -> held[0],
+                v -> held[0] = v, 0, 10, 2);
+        for (int i = 0; i <= 20; i++) {
+            stepped.setFraction(i / 20.0);
+            check("a stepped slider only ever holds a step",
+                    Math.abs(held[0] / 2 - Math.rint(held[0] / 2)) < 1e-9);
+            check("and stays inside its bounds", held[0] >= 0 && held[0] <= 10);
+        }
+
+        // A value set from outside, past the ends, still reads inside them.
+        held[0] = 999;
+        check("a value from elsewhere is clamped when read", stepped.value() == 10);
+        held[0] = -999;
+        check("at both ends", stepped.value() == 0);
+
+        double[] which = { 0 };
+        RyneGui.Setting mode = RyneGui.Setting.mode("mode", () -> which[0],
+                v -> which[0] = v, java.util.List.of("first", "second", "third"));
+        check("a mode reads its option", mode.shown().equals("first"));
+        mode.step(1);
+        check("stepping moves along", mode.shown().equals("second"));
+        mode.step(1);
+        mode.step(1);
+        check("and wraps rather than running off the end", mode.shown().equals("first"));
+        mode.step(-1);
+        check("backwards too", mode.shown().equals("third"));
+
+        boolean[] flag = { false };
+        RyneGui.Setting sw = RyneGui.Setting.switching("on", () -> flag[0],
+                v -> flag[0] = v);
+        check("a switch starts off", !sw.on() && sw.shown().equals("off"));
+        sw.step(1);
+        check("and flips", sw.on() && flag[0]);
+        sw.step(1);
+        check("and back", !sw.on() && !flag[0]);
+
+        // --- a row with settings is taller, and the rows below it move down
+        RyneGui.Panel s1 = gui.add(new RyneGui.Panel("s", "Settings", 400, 400));
+        s1.add("plain", RyneGui.Kind.TOGGLE, () -> { }, () -> false);
+        s1.add("knobs", RyneGui.Kind.TOGGLE, () -> { }, () -> false);
+        RyneGui.Row knobs = s1.rows.get(1);
+        knobs.with(RyneGui.Setting.slider("a", () -> 1, v -> { }, 0, 5, 1));
+        knobs.with(RyneGui.Setting.slider("b", () -> 1, v -> { }, 0, 5, 1));
+        s1.openness = 1f;
+
+        int shutHeight = s1.height();
+        check("a row with settings shut is the same as one without",
+                knobs.height() == RyneGui.ROW_HEIGHT);
+        check("only settings that have a module have any", !s1.rows.get(0).hasSettings());
+        check("right-clicking one with none does nothing",
+                !RyneGui.toggleSettings(s1.rows.get(0)));
+        check("and one with some opens", RyneGui.toggleSettings(knobs) && knobs.expanded);
+
+        knobs.openness = 1f;
+        check("an open row is taller by its settings",
+                knobs.height() == RyneGui.ROW_HEIGHT + 2 * RyneGui.SETTING_HEIGHT);
+        check("and the panel grew by exactly that",
+                s1.height() == shutHeight + 2 * RyneGui.SETTING_HEIGHT);
+
+        // The row under the pointer has to be found by walking, not dividing: with the
+        // first row expanded, dividing lands on the wrong one every time.
+        RyneGui.Row first = s1.rows.get(0);
+        first.with(RyneGui.Setting.slider("c", () -> 1, v -> { }, 0, 5, 1));
+        first.expanded = true;
+        first.openness = 1f;
+        double bodyTop = s1.y + RyneGui.TITLE_HEIGHT;
+        check("the first row is still the first row",
+                RyneGui.rowAt(s1, s1.x + 10, bodyTop + 2) == 0);
+        check("its setting line belongs to it too",
+                RyneGui.rowAt(s1, s1.x + 10,
+                        bodyTop + RyneGui.ROW_HEIGHT + 2) == 0);
+        check("and that line is its first setting",
+                RyneGui.settingAt(s1, 0, bodyTop + RyneGui.ROW_HEIGHT + 2) == 0);
+        check("the row's own line is not a setting",
+                RyneGui.settingAt(s1, 0, bodyTop + 2) == -1);
+        check("the second row starts below all of that",
+                RyneGui.rowAt(s1, s1.x + 10,
+                        bodyTop + first.height() + 2) == 1);
+        check("and past the bottom is nothing",
+                RyneGui.rowAt(s1, s1.x + 10, bodyTop + s1.height() + 40) == -1);
+
+        // --- the horizontal bar: the same modules laid out the other way
+        //
+        // The failure this invites is a tab whose hit box is not where it was drawn. It is
+        // invisible until a few pixels of drift make a click land on the neighbour, so the
+        // drawing and the hit testing come from the same place and are checked against
+        // each other across every tab.
+        java.util.List<RyneGui.Panel> bar = gui.panels();
+        for (int i = 0; i < bar.size(); i++) {
+            int tabX = RyneBar.tabX(bar, i);
+            int wide = RyneBar.tabWidth(bar.get(i).title);
+            check("a tab is found at its own left edge",
+                    RyneBar.tabAt(bar, tabX + 1, RyneBar.TOP + 2) == i);
+            check("and at its right edge",
+                    RyneBar.tabAt(bar, tabX + wide - 1, RyneBar.TOP + 2) == i);
+            check("and not one pixel past it",
+                    RyneBar.tabAt(bar, tabX + wide, RyneBar.TOP + 2) != i);
+            check("a tab is wider than its label",
+                    wide > RyneType.width(RyneType.caps(bar.get(i).title),
+                            RyneType.TRACKING));
+            if (i > 0) {
+                check("tabs do not overlap",
+                        tabX >= RyneBar.tabX(bar, i - 1)
+                                + RyneBar.tabWidth(bar.get(i - 1).title));
+            }
+        }
+        check("above the bar is not a tab", RyneBar.tabAt(bar, RyneBar.LEFT + 2, 0) == -1);
+        check("below the bar is not a tab",
+                RyneBar.tabAt(bar, RyneBar.LEFT + 2, RyneBar.TOP + RyneBar.HEIGHT + 1) == -1);
+
+        // A dropped-open list: every module reachable, and every one only itself.
+        RyneGui.Panel dropped = bar.get(0);
+        for (RyneGui.Row row : dropped.rows) row.openness = 0f;
+        for (int i = 0; i < dropped.rows.size(); i++) {
+            int itemY = RyneBar.listTop() + RyneBar.itemTop(dropped, i);
+            int inside = RyneBar.tabX(bar, 0) + 4;
+            check("a module is found on its own line",
+                    RyneBar.itemAt(bar, 0, inside, itemY + 2) == i);
+            check("its own line is not a setting",
+                    RyneBar.settingAt(bar, 0, i, itemY + 2) == -1);
+        }
+        check("past the end of the list is nothing",
+                RyneBar.itemAt(bar, 0, RyneBar.tabX(bar, 0) + 4,
+                        RyneBar.listTop() + RyneBar.listHeight(dropped) + 30) == -1);
+        check("beside the list is nothing",
+                RyneBar.itemAt(bar, 0, RyneBar.tabX(bar, 0) + RyneBar.LIST_WIDTH + 5,
+                        RyneBar.listTop() + 2) == -1);
+        check("a tab that is not open has no modules",
+                RyneBar.itemAt(bar, -1, RyneBar.LEFT + 4, RyneBar.listTop() + 2) == -1);
+
+        // With a module expanded, the ones below it move down and stay findable -- the
+        // same walking-not-dividing property the stacked panel needs.
+        RyneGui.Row expanded = dropped.rows.get(0);
+        expanded.with(RyneGui.Setting.slider("x", () -> 1, v -> { }, 0, 4, 1));
+        expanded.with(RyneGui.Setting.slider("y", () -> 1, v -> { }, 0, 4, 1));
+        expanded.expanded = true;
+        expanded.openness = 1f;
+        check("the expanded module is still first",
+                RyneBar.itemAt(bar, 0, RyneBar.tabX(bar, 0) + 4,
+                        RyneBar.listTop() + 2) == 0);
+        check("its knobs belong to it",
+                RyneBar.itemAt(bar, 0, RyneBar.tabX(bar, 0) + 4,
+                        RyneBar.listTop() + RyneBar.ITEM_HEIGHT + 2) == 0);
+        check("and are found in order",
+                RyneBar.settingAt(bar, 0, 0,
+                        RyneBar.listTop() + RyneBar.ITEM_HEIGHT + 2) == 0
+                        && RyneBar.settingAt(bar, 0, 0, RyneBar.listTop()
+                                + RyneBar.ITEM_HEIGHT + RyneGui.SETTING_HEIGHT + 2) == 1);
+        if (dropped.rows.size() > 1) {
+            check("the next module has moved down below them",
+                    RyneBar.itemAt(bar, 0, RyneBar.tabX(bar, 0) + 4,
+                            RyneBar.listTop() + RyneBar.itemHeight(expanded) + 2) == 1);
+        }
+        check("the list grew by exactly the knobs",
+                RyneBar.itemHeight(expanded)
+                        == RyneBar.ITEM_HEIGHT + 2 * RyneGui.SETTING_HEIGHT);
+
+        // A track a click lands on has to be the track that was drawn.
+        check("the left of a track is nothing along it",
+                Math.abs(RyneBar.fractionAt(bar, 0, RyneBar.trackLeft(bar, 0))) < 1e-9);
+        check("and the right of it is all the way",
+                Math.abs(RyneBar.fractionAt(bar, 0,
+                        RyneBar.trackLeft(bar, 0) + RyneBar.trackWidth()) - 1) < 1e-9);
+        check("a track fits inside its list",
+                RyneBar.trackLeft(bar, 0) + RyneBar.trackWidth()
+                        <= RyneBar.tabX(bar, 0) + RyneBar.LIST_WIDTH);
+
+        expanded.expanded = false;
+        expanded.openness = 0f;
+        expanded.settings.clear();
 
         // --- a panel may not be dragged off where it cannot be got back
         gui.beginDrag(a, a.x + 5, a.y + 5);

@@ -49,6 +49,7 @@ public class MirageClient implements ClientModInitializer {
     private static KeyBinding previousResult;
     private static KeyBinding openMenu;
     private static KeyBinding openMaps;
+    private static KeyBinding openBar;
     private static KeyBinding cycleRig;
     private static KeyBinding armNext;
     private static KeyBinding fireNow;
@@ -423,6 +424,7 @@ public class MirageClient implements ClientModInitializer {
             while (openRigs.wasPressed()) client.setScreen(new RyneRigScreen());
             while (openTracker.wasPressed()) client.setScreen(new RyneTrackerScreen());
             while (openMaps.wasPressed()) client.setScreen(new RyneMapScreen());
+            while (openBar.wasPressed()) client.setScreen(new RyneBarScreen());
             if (openKeys) {
                 openKeys = false;
                 client.setScreen(new MirageKeysScreen());
@@ -601,6 +603,10 @@ public class MirageClient implements ClientModInitializer {
         // M is the vanilla-unused letter nearest to what it does.
         openMaps = bind("open_maps", GLFW.GLFW_KEY_M, category,
                 "Open map art");
+        // The same modules along the top instead of down the side. Unbound by default:
+        // two menus on two keys by default is one key nobody asked for.
+        openBar = bind("open_bar", GLFW.GLFW_KEY_UNKNOWN, category,
+                "Open the bar menu");
     }
 
     /** What a key is bound to now, in words, or that it is not bound at all. */

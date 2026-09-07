@@ -33,7 +33,7 @@ check("every key field is registered through the table",
 # and makes a key that quietly disappears as loud as one that quietly appears.
 EXPECTED = {"next_result", "prev_result", "arm_next", "fire_now", "refill", "clear_fakes",
             "cycle_winner", "win_first", "win_second", "power", "cut_block", "call_first",
-            "call_second", "cycle_rig", "open_menu", "open_maps", "open_client", "open_rigs",
+            "call_second", "cycle_rig", "open_menu", "open_maps", "open_bar", "open_client", "open_rigs",
             "open_tracker"}
 found = {name for _, name, _ in bound}
 check("the keys are the ones we think (extra: %s, missing: %s)"

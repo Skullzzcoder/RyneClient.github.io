@@ -28,7 +28,7 @@ import net.minecraft.text.Text;
  * Minecraft in it and is run by check-gui.py. Being four pixels out is invisible in a
  * screenshot and obvious in use.
  */
-public class RyneClickScreen extends Screen {
+public class RyneClickScreen extends Screen implements RyneClickScreen.Clicks {
 
     /** How long the whole menu takes to fade in, in seconds. */
     private static final float FADE_SPEED = 16f;
@@ -36,11 +36,36 @@ public class RyneClickScreen extends Screen {
     private static final RyneGui GUI = new RyneGui();
     private static boolean built;
 
+    /**
+     * The modules, for whichever layout is showing them.
+     *
+     * <p>One model, two ways of laying it out: this stacked menu and the horizontal bar.
+     * A module toggled in one is toggled in the other, and a knob turned in one is the
+     * same knob -- because there is only one of each.
+     */
+    static RyneGui shared() {
+        buildOnce();
+        return GUI;
+    }
+
+    /** A screen that wants the click event. Both layouts do, and they want it the same way. */
+    public interface Clicks {
+        void onClick();
+    }
+
     private final Screen parent;
     private float shown;
     private long lastFrame;
     /** Whether the button was down last frame, so a press and a release can be told apart. */
     private boolean wasDown;
+
+    /** Where a knob's track starts and stops inside the panel. Shared with the drawing. */
+    private static final int TRACK_LEFT = 74;
+    private static final int TRACK_RIGHT = 12;
+
+    /** The slider being dragged, so it follows the pointer rather than needing a click each. */
+    private RyneGui.Setting heldSetting;
+    private RyneGui.Panel heldPanel;
 
     /** Shared, so the trail carries across when one menu opens another. */
     private static final RyneCursor CURSOR = new RyneCursor();
@@ -131,7 +156,44 @@ public class RyneClickScreen extends Screen {
         }
         GUI.add(themes);
 
+        // The knobs, hung on the modules they belong to. Right-click a module to see them.
+        // Each reads and writes wherever the value already lives, so a setting changed
+        // here and the same setting changed by a command are the same setting.
+        knob("tracker", "Tracking", RyneGui.Setting.slider("alert after",
+                () -> Sessions.alertAfter(), value -> Sessions.setAlertAfter((int) value),
+                2, 12, 1));
+        knob("tracker", "Tracking", RyneGui.Setting.slider("rakeback %",
+                () -> Sessions.rakebackBps() / 100.0,
+                value -> Sessions.setRakebackBps((int) Math.round(value * 100)), 0, 50, 1));
+
+        knob("client", "Rigs", RyneGui.Setting.switching("quiet", SelfFakes::quiet,
+                SelfFakes::setQuiet));
+        knob("client", "Reset layout", RyneGui.Setting.switching("cursor trail",
+                RyneCursor::on, RyneCursor::setOn));
+
+        knob("hud", "Tracker bar", RyneGui.Setting.switching("toasts",
+                () -> shows("toasts"), on -> toggleHud("toasts")));
+
         RyneLayout.load(GUI);
+    }
+
+    /**
+     * Hangs a knob on a named module.
+     *
+     * <p>By name rather than by holding the row as it is built, so a panel still reads as
+     * one statement. A name that matches nothing is ignored rather than thrown: a knob
+     * that quietly does not appear is a smaller problem than a menu that will not open.
+     */
+    private static void knob(String panelId, String rowLabel, RyneGui.Setting setting) {
+        RyneGui.Panel panel = GUI.byId(panelId);
+        if (panel == null) return;
+
+        for (RyneGui.Row row : panel.rows) {
+            if (row.label.equals(rowLabel)) {
+                row.with(setting);
+                return;
+            }
+        }
     }
 
     private static boolean shows(String id) {
@@ -164,12 +226,12 @@ public class RyneClickScreen extends Screen {
      */
     public static void register() {
         ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
-            if (!(screen instanceof RyneClickScreen menu)) return;
-            menu.listen(ScreenMouseEvents.allowMouseClick(screen));
+            if (!(screen instanceof Clicks menu)) return;
+            listen(ScreenMouseEvents.allowMouseClick(screen), menu);
         });
     }
 
-    private void listen(Event<ScreenMouseEvents.AllowMouseClick> event) {
+    private static void listen(Event<ScreenMouseEvents.AllowMouseClick> event, Clicks menu) {
         Object listener = Proxy.newProxyInstance(
                 RyneClickScreen.class.getClassLoader(),
                 new Class<?>[] { ScreenMouseEvents.AllowMouseClick.class },
@@ -181,7 +243,7 @@ public class RyneClickScreen extends Screen {
                             default -> "ryne menu";
                         };
                     }
-                    click();
+                    menu.onClick();
                     // Never let the click through: everything on this screen is ours.
                     return false;
                 });
@@ -210,21 +272,41 @@ public class RyneClickScreen extends Screen {
     }
 
     private boolean mouseDown() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        return GLFW.glfwGetMouseButton(client.getWindow().getHandle(),
-                GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+        return buttonDown(GLFW.GLFW_MOUSE_BUTTON_LEFT);
     }
 
-    /** One click: a title grabs the panel, a row does its thing. */
-    private void click() {
+    /**
+     * Which button, asked of GLFW rather than read out of the event.
+     *
+     * <p>The click event does carry the button, but as one of four positional arguments
+     * reached through a reflective proxy -- and the position of an argument is exactly the
+     * sort of thing that moves between versions without a compile error to say so. This
+     * is the same call the screen already polls the left button with.
+     */
+    private boolean buttonDown(int button) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        return GLFW.glfwGetMouseButton(client.getWindow().getHandle(), button)
+                == GLFW.GLFW_PRESS;
+    }
+
+    /**
+     * One click: a title grabs the panel, a row does its thing, a right-click opens its
+     * settings, and a click on a knob turns it.
+     */
+    @Override
+    public void onClick() {
         double[] mouse = pointer();
         if (mouse == null) return;
 
         RyneGui.Panel panel = GUI.topmostAt(mouse[0], mouse[1]);
         if (panel == null) return;
 
+        boolean right = buttonDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+
         if (RyneGui.inTitle(panel, mouse[0], mouse[1])) {
-            GUI.beginDrag(panel, mouse[0], mouse[1]);
+            // Only the left button drags. A right-click on a title would otherwise start a
+            // drag that nothing ever ends, since the release poll watches the left button.
+            if (!right) GUI.beginDrag(panel, mouse[0], mouse[1]);
             return;
         }
 
@@ -232,7 +314,40 @@ public class RyneClickScreen extends Screen {
         if (row < 0) return;
 
         RyneGui.Row hit = panel.rows.get(row);
+        int setting = RyneGui.settingAt(panel, row, mouse[1]);
+
+        if (setting >= 0) {
+            turn(panel, hit, setting, mouse[0], right);
+            return;
+        }
+
+        if (right) {
+            RyneGui.toggleSettings(hit);
+            return;
+        }
         if (hit.action != null) hit.action.run();
+    }
+
+    /** A click on one knob: a switch flips, a mode steps, a slider goes where you clicked. */
+    private void turn(RyneGui.Panel panel, RyneGui.Row row, int index, double mouseX,
+                      boolean right) {
+        RyneGui.Setting setting = row.settings.get(index);
+        if (setting.shape == RyneGui.Shape.SLIDER) {
+            setting.setFraction(trackFraction(panel, mouseX));
+            // Held, so it follows the pointer instead of needing a click per value.
+            this.heldSetting = setting;
+            this.heldPanel = panel;
+            return;
+        }
+        // Right steps backwards, which is the only way round a list of four is bearable.
+        setting.step(right ? -1 : 1);
+    }
+
+    /** Where along a knob's track a given x is, 0 at the left and 1 at the right. */
+    private static double trackFraction(RyneGui.Panel panel, double mouseX) {
+        double left = panel.x + TRACK_LEFT;
+        double width = RyneGui.PANEL_WIDTH - TRACK_LEFT - TRACK_RIGHT;
+        return width <= 0 ? 0 : (mouseX - left) / width;
     }
 
     // ---------------------------------------------------------------------- drawing
@@ -269,6 +384,14 @@ public class RyneClickScreen extends Screen {
         // The press edge, before wasDown is moved on: a ring per click, not one per frame
         // the button is held down.
         if (down && !this.wasDown && mouse != null) CURSOR.click((int) px, (int) py);
+        // A slider follows the pointer while the button is held, and lets go the instant
+        // it is released -- otherwise it keeps tracking after you have moved on.
+        if (!down) {
+            this.heldSetting = null;
+            this.heldPanel = null;
+        } else if (this.heldSetting != null && this.heldPanel != null && mouse != null) {
+            this.heldSetting.setFraction(trackFraction(this.heldPanel, px));
+        }
         this.wasDown = down;
         if (down && GUI.isDragging()) GUI.dragTo(px, py, this.width, this.height);
 
@@ -340,7 +463,11 @@ public class RyneClickScreen extends Screen {
             if (y >= bottom) break;
             paintRow(context, panel, row, y, Math.min(RyneGui.ROW_HEIGHT, bottom - y),
                     theme, a);
-            y += RyneGui.ROW_HEIGHT;
+            if (row.openness > 0.02f) {
+                paintSettings(context, panel, row, y + RyneGui.ROW_HEIGHT, bottom, theme, a);
+            }
+            // The row's own height, not a fixed one: an expanded row pushes the rest down.
+            y += row.height();
         }
     }
 
@@ -371,6 +498,57 @@ public class RyneClickScreen extends Screen {
                 RyneDraw.box(context, panel.x + RyneGui.PANEL_WIDTH - 18, y + 6, 8, 6,
                         RyneGui.fade(on ? theme.accent : theme.line, a));
             }
+        }
+    }
+
+    /**
+     * The knobs under a module, once it has been right-clicked open.
+     *
+     * <p>Indented and on a darker ground, so they read as belonging to the row above
+     * rather than as more modules. Each is one line: name on the left, value on the right,
+     * and for a slider a track between them with the filled part showing where it is.
+     */
+    private void paintSettings(DrawContext context, RyneGui.Panel panel, RyneGui.Row row,
+                               int y, int bottom, RyneTheme.Theme theme, float a) {
+        int width = RyneGui.PANEL_WIDTH;
+        float open = row.openness;
+
+        for (int i = 0; i < row.settings.size(); i++) {
+            int lineY = y + i * RyneGui.SETTING_HEIGHT;
+            if (lineY >= bottom) return;
+
+            RyneGui.Setting setting = row.settings.get(i);
+            int high = Math.min(RyneGui.SETTING_HEIGHT, bottom - lineY);
+            RyneDraw.box(context, panel.x, lineY, width, high,
+                    RyneGui.fade(theme.page, a * open));
+            // A hairline down the indent, so the group reads as one thing.
+            RyneDraw.box(context, panel.x + 10, lineY, 1, high,
+                    RyneGui.fade(theme.line, a * open));
+
+            if (high < 8) continue;
+
+            RyneDraw.text(context, this.textRenderer,
+                    RyneType.fit(setting.label, TRACK_LEFT - 22, 0),
+                    panel.x + 18, lineY + 2, RyneGui.fade(theme.dim, a * open));
+
+            if (setting.shape == RyneGui.Shape.SLIDER) {
+                int trackX = panel.x + TRACK_LEFT;
+                int trackWide = width - TRACK_LEFT - TRACK_RIGHT - 26;
+                RyneDraw.box(context, trackX, lineY + 5, trackWide, 2,
+                        RyneGui.fade(theme.line, a * open));
+                int filled = (int) Math.round(trackWide * setting.fraction());
+                RyneDraw.box(context, trackX, lineY + 5, Math.max(1, filled), 2,
+                        RyneGui.fade(theme.accent, a * open));
+                // The handle, so there is something to aim at rather than a bare bar.
+                RyneDraw.box(context, trackX + Math.max(0, filled - 1), lineY + 3, 3, 6,
+                        RyneGui.fade(theme.text, a * open));
+            }
+
+            String shown = setting.shown();
+            RyneDraw.text(context, this.textRenderer, shown,
+                    RyneType.rightX(panel.x + width - 8, shown, 0), lineY + 2,
+                    RyneGui.fade(setting.shape == RyneGui.Shape.SWITCH && setting.on()
+                            ? theme.accent : theme.text, a * open));
         }
     }
 

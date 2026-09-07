@@ -6,6 +6,10 @@ screenshot and obvious in use, so the model has no Minecraft in it and is run he
 import io, os, shutil, subprocess, sys, tempfile
 
 SRC = "src/main/java/dev/skullzz/mirage/client/RyneGui.java"
+# The bar is a second layout over the same panels, so it is exercised here too --
+# one model, and both ways of laying it out checked against it.
+BAR = "src/main/java/dev/skullzz/mirage/client/RyneBar.java"
+TYPE = "src/main/java/dev/skullzz/mirage/client/RyneType.java"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 fails = []
@@ -39,7 +43,7 @@ check("a shut panel takes no row clicks", "if (panel.shut()) return -1;" in sour
 work = tempfile.mkdtemp(prefix="mirage-gui-")
 try:
     classes = os.path.join(work, "classes")
-    build = subprocess.run(["javac", "-proc:none", "-nowarn", "-d", classes, SRC,
+    build = subprocess.run(["javac", "-proc:none", "-nowarn", "-d", classes, SRC, BAR, TYPE,
                             os.path.join(HERE, "gui", "Harness.java")],
                            capture_output=True, text=True)
     check("it compiles with no game on the classpath", build.returncode == 0)

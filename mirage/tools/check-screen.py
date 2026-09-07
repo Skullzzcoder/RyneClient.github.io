@@ -10,12 +10,11 @@ This is a floor, not a ceiling: it cannot say a name is right, only that it is n
 import io, re, sys, glob, os
 
 # Screens proper: these must also redraw the way the rest of the mod already does.
-SCREENS = ["src/main/java/dev/skullzz/mirage/client/MirageSchematicsScreen.java",
-           "src/main/java/dev/skullzz/mirage/client/RyneScreen.java",
-           "src/main/java/dev/skullzz/mirage/client/RyneRigScreen.java",
-           "src/main/java/dev/skullzz/mirage/client/RyneTrackerScreen.java",
-           "src/main/java/dev/skullzz/mirage/client/RyneClickScreen.java",
-           "src/main/java/dev/skullzz/mirage/client/RyneHudScreen.java"]
+# Found rather than listed. This was a hand-written list of six, and two screens added
+# after it was written were simply never checked -- which is the one thing this file is
+# for. A screen that is not scanned is a screen free to call anything it likes.
+SCREENS = sorted(p.replace("\\", "/") for p in
+                 glob.glob("src/main/java/dev/skullzz/mirage/client/*Screen.java"))
 
 # Also scanned for unproven calls, but not screens, so the redraw rule does not apply.
 HELPERS = ["src/main/java/dev/skullzz/mirage/client/RyneDraw.java"]
@@ -24,6 +23,20 @@ HELPERS = ["src/main/java/dev/skullzz/mirage/client/RyneDraw.java"]
 # An entry here is a decision, not an exemption: it has to be isolated in one method so a
 # rename is one compile error in one place, and inspectApi prints the replacement.
 DELIBERATE = {"fill": "RyneDraw.java"}
+
+# A different thing from DELIBERATE, and worth keeping separate.
+#
+# DELIBERATE is a risk knowingly taken: a call nothing has seen compile, kept to one method
+# so that if the name has moved it is one error rather than forty -- hence the once-only
+# rule below.
+#
+# These are not risks. They are calls whose only evidence is that the file they are in has
+# compiled in every build since it was written, which is exactly what "seen elsewhere in
+# the mod" is standing in for anyway. They surfaced when SCREENS became a glob: both live
+# in screens the old hand-written list never mentioned, so neither had ever been checked.
+# Pinned to their file, but not counted once, because a proven call may be used freely.
+PROVEN_BY_BUILD = {"setMessage": "FakeItemsScreen.java",
+                   "getBoundKeyOf": "MirageKeysScreen.java"}
 
 # Java and this project's own idioms; not Minecraft, so not evidence either way.
 JDK = {"literal", "join", "max", "min", "size", "get", "isEmpty", "length", "substring",
@@ -64,6 +77,10 @@ for screen in SCREENS + HELPERS:
         if call in declared or call in JDK:
             continue
         checked += 1
+        if call in PROVEN_BY_BUILD:
+            check("%s() is only used in %s" % (call, PROVEN_BY_BUILD[call]),
+                  os.path.basename(screen) == PROVEN_BY_BUILD[call])
+            continue
         if call in DELIBERATE:
             # Allowed only in the file it was decided for, and only once: the whole point
             # is that a rename is one compile error rather than forty.
@@ -90,7 +107,9 @@ for screen in SCREENS + HELPERS:
 
 print("FAILED:\n  " + "\n  ".join(fails) if fails else
       "%d Minecraft calls across %d screen(s), every one already used elsewhere in code "
-      "that builds, except %d deliberate: %s"
+      "that builds, except %d deliberate: %s, and %d proven by the build itself: %s"
       % (checked, len(SCREENS), len(DELIBERATE),
-         ", ".join("%s() in %s" % (k, v) for k, v in sorted(DELIBERATE.items()))))
+         ", ".join("%s() in %s" % (k, v) for k, v in sorted(DELIBERATE.items())),
+         len(PROVEN_BY_BUILD),
+         ", ".join("%s() in %s" % (k, v) for k, v in sorted(PROVEN_BY_BUILD.items()))))
 sys.exit(1 if fails else 0)
