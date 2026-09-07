@@ -110,17 +110,40 @@ try:
         + "\nglobalThis.__draw = draw;\nglobalThis.__setState = s => { state = s; };"
           "\nglobalThis.__setQuery = q => { query = q; };"
           "\nglobalThis.__pageNode = document.getElementById('page');"
-          "\nglobalThis.__navNode = document.getElementById('nav');\n")
+          "\nglobalThis.__navNode = document.getElementById('nav');"
+          "\nglobalThis.__pageIds = () => PAGES.map(p => p.id);"
+          "\nglobalThis.__pageLabel = id => (PAGES.find(p => p.id === id) || {}).label;"
+          "\nglobalThis.__setSettings = s => { settings = s; };\n")
 
     runner = """
 import './shim.js';
 import './page.mjs';
 const cases = JSON.parse(process.argv[2]);
 const out = {};
+// Real knobs, so the settings page draws its controls rather than the empty message it
+// shows with none -- which is "saying something" and would have passed while the drawing
+// code beneath it was never run once.
+const SETTINGS = [
+  { panel: 'tracker', row: 'Tracking', label: 'Tracker - Tracking', toggle: true,
+    on: false, knobs: [
+      { index: 0, label: 'alert after', shape: 'slider', value: 5, least: 2, most: 12,
+        step: 1, shown: '5', options: [] },
+      { index: 1, label: 'mode', shape: 'mode', value: 1, least: 0, most: 2, step: 1,
+        shown: 'second', options: ['first', 'second', 'third'] },
+      { index: 2, label: 'quiet', shape: 'switch', value: 1, least: 0, most: 1, step: 1,
+        shown: 'on', options: [] }]},
+  { panel: 'client', row: 'Rigs', label: 'Client - Rigs', toggle: true, on: true,
+    knobs: [] },
+];
+
 for (const [name, state] of Object.entries(cases)) {
+  globalThis.__setSettings(SETTINGS);
   globalThis.__setState(state);
   globalThis.__setQuery('');
-  const pages = ['overview','rigs','machines','builds','schematics','mapart','tracker','log'];
+  // Taken from the page itself. This was a hand-written list, and the settings page
+  // added after it was written was never rendered once -- the same way check-screen's
+  // hand-written list of screens missed two.
+  const pages = globalThis.__pageIds();
   out[name] = {};
   for (const page of pages) {
     globalThis.__setState(state);
@@ -128,8 +151,7 @@ for (const [name, state] of Object.entries(cases)) {
       // Reach the page by clicking its nav button, the way a person would.
       globalThis.__draw();
       const button = globalThis.__navNode.find(n => n.tag === 'button' &&
-          n.text.trim().startsWith(({overview:'Overview',rigs:'Rigs',machines:'Machines',
-          builds:'Builds',schematics:'Schematics',mapart:'Map art',tracker:'Tracker',log:'Activity'})[page]));
+          n.text.trim().startsWith(globalThis.__pageLabel(page)));
       if (button.length) button[0].onclick();
       const drawn = globalThis.__pageNode.text.trim();
       const heading = (globalThis.__pageNode.find(n => n.tag === 'h2')[0] || {}).text || '';
@@ -202,6 +224,6 @@ check("a dead client leaves the last state up rather than blanking it",
       "catch (failure)" in script and "last = text" in script)
 
 print("FAILED:\n  " + "\n  ".join(fails) if fails else
-      "the page renders %d states x 8 sections plus search, all without throwing and all "
+      "the page renders %d states x every section plus search, all without throwing and all "
       "saying something" % len(STATES))
 sys.exit(1 if fails else 0)

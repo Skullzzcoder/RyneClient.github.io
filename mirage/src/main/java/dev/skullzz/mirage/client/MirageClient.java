@@ -142,9 +142,9 @@ public class MirageClient implements ClientModInitializer {
                                         .executes(MirageClient::listDesigns))
                                 .then(ClientCommandManager.literal("copy")
                                         .then(ClientCommandManager.argument("from",
-                                                        IntegerArgumentType.integer(0, 1000000))
+                                                        IntegerArgumentType.integer(0, Integer.MAX_VALUE))
                                                 .then(ClientCommandManager.argument("to",
-                                                                IntegerArgumentType.integer(0, 1000000))
+                                                                IntegerArgumentType.integer(0, Integer.MAX_VALUE))
                                                         .executes(MirageClient::copyMap))))
                                 .then(ClientCommandManager.literal("save")
                                         .then(ClientCommandManager.literal("held")
@@ -152,7 +152,7 @@ public class MirageClient implements ClientModInitializer {
                                                                 StringArgumentType.word())
                                                         .executes(MirageClient::saveHeldDesign)))
                                         .then(ClientCommandManager.argument("id",
-                                                        IntegerArgumentType.integer(0, 1000000))
+                                                        IntegerArgumentType.integer(0, Integer.MAX_VALUE))
                                                 .then(ClientCommandManager.argument("name",
                                                                 StringArgumentType.word())
                                                         .executes(MirageClient::saveDesign))))
@@ -174,7 +174,7 @@ public class MirageClient implements ClientModInitializer {
                                                 .suggests((context, builder) ->
                                                         CommandSource.suggestMatching(MapArt.names(), builder))
                                                 .then(ClientCommandManager.argument("id",
-                                                                IntegerArgumentType.integer(0, 1000000))
+                                                                IntegerArgumentType.integer(0, Integer.MAX_VALUE))
                                                         .executes(MirageClient::loadDesign))))
                                 .then(ClientCommandManager.literal("forget")
                                         .then(ClientCommandManager.argument("name",
@@ -183,7 +183,7 @@ public class MirageClient implements ClientModInitializer {
                                                         CommandSource.suggestMatching(MapArt.names(), builder))
                                                 .executes(MirageClient::forgetDesign)))
                                 .then(ClientCommandManager.argument("id",
-                                                IntegerArgumentType.integer(0, 1000000))
+                                                IntegerArgumentType.integer(0, Integer.MAX_VALUE))
                                         .then(ClientCommandManager.literal("clear")
                                                 .executes(context -> paintMap(context, " ")))
                                         .then(ClientCommandManager.argument("text",
@@ -390,6 +390,7 @@ public class MirageClient implements ClientModInitializer {
             if (PriceApi.consumeDirty()) SelfFakes.rebuildAll();
 
             publishDashboard();
+            serveSettings();
 
             // Before every other switch, and the only one that still works when it is off.
             Boolean askedPower = WebDashboard.pollPower();
@@ -640,6 +641,62 @@ public class MirageClient implements ClientModInitializer {
     private static String lastPublished = "";
 
     /** Pushes the current state to the dashboard, only when it has actually changed. */
+    /**
+     * Describes every module and knob for the browser, and applies whatever it asked for.
+     *
+     * <p>Both halves run on the client tick, which is the only thread allowed to touch any
+     * of this. The HTTP threads only ever read the description that was last published and
+     * park a request; nothing over there calls into the game.
+     */
+    private static void serveSettings() {
+        if (!WebDashboard.isRunning()) return;
+
+        RyneGui gui = RyneClickScreen.shared();
+
+        // Applied before describing, so the page that caused a change sees it on its very
+        // next poll rather than one behind.
+        for (WebSettings.Change change : WebDashboard.drainChanges()) {
+            RyneGui.Panel panel = gui.byId(change.panel);
+            if (panel == null) continue;
+
+            for (RyneGui.Row row : panel.rows) {
+                if (!row.label.equals(change.row)) continue;
+
+                if (change.isModule()) {
+                    // Only a toggle is set to a value. An action has no state to be put
+                    // into, so a browser saying "on" would just run it, which is not what
+                    // a switch in a settings page means.
+                    if (row.kind == RyneGui.Kind.TOGGLE && row.action != null
+                            && row.on() != (change.value >= 0.5)) {
+                        row.action.run();
+                    }
+                } else if (change.index < row.settings.size()) {
+                    row.settings.get(change.index).set.accept(change.value);
+                }
+                break;
+            }
+        }
+        SelfFakes.save();
+
+        java.util.List<WebSettings.Module> described = new java.util.ArrayList<>();
+        for (RyneGui.Panel panel : gui.panels()) {
+            for (RyneGui.Row row : panel.rows) {
+                WebSettings.Module module = new WebSettings.Module(panel.id, row.label,
+                        panel.title + " - " + row.label,
+                        row.kind == RyneGui.Kind.TOGGLE, row.on());
+                for (int i = 0; i < row.settings.size(); i++) {
+                    RyneGui.Setting knob = row.settings.get(i);
+                    module.knobs.add(new WebSettings.Knob(panel.id, row.label, i,
+                            knob.label, knob.shape.name().toLowerCase(java.util.Locale.ROOT),
+                            knob.value(), knob.least, knob.most, knob.step,
+                            knob.options, knob.shown()));
+                }
+                described.add(module);
+            }
+        }
+        WebDashboard.publishSettings(described);
+    }
+
     private static void publishDashboard() {
         if (!WebDashboard.isRunning()) return;
 
@@ -1408,6 +1465,7 @@ public class MirageClient implements ClientModInitializer {
 
     private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildBranch() {
         return ClientCommandManager.literal("build")
+                .then(ClientCommandManager.literal("guide").executes(MirageClient::buildGuide))
                 .then(ClientCommandManager.literal("corner").executes(MirageClient::buildCorner))
                 .then(ClientCommandManager.literal("save")
                         .then(ClientCommandManager.argument("name", StringArgumentType.word())
@@ -1516,6 +1574,30 @@ public class MirageClient implements ClientModInitializer {
         return feedback(context, (out ? "Took " : "Filled ") + count + " block"
                 + (count == 1 ? "" : "s") + (out ? " out of '" : " back into '") + name
                 + "'. " + FakeBlocks.cutCount(name) + " open in total.");
+    }
+
+    /**
+     * What the build showing around you still needs, and where the nearest one is.
+     *
+     * <p>A fake build is a picture until you stand in it and make it real. This is the
+     * list for doing that: how far through you are, what to go and mine, and one position
+     * to walk to. Place a block and the number goes down, because it is read off the world
+     * each time rather than remembered.
+     */
+    private static int buildGuide(CommandContext<FabricClientCommandSource> context) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null) return error(context, "Not in a world.");
+
+        java.util.List<BuildGuide.Spot> spots = FakeBlocks.guide();
+        if (spots.isEmpty()) {
+            return error(context, "No build is showing. /fake build put <name> first.");
+        }
+
+        java.util.List<String> lines = BuildGuide.lines("build guide", spots,
+                (int) Math.floor(client.player.getX()),
+                (int) Math.floor(client.player.getY()),
+                (int) Math.floor(client.player.getZ()), 14);
+        return feedback(context, String.join("\n", lines));
     }
 
     private static int buildCorner(CommandContext<FabricClientCommandSource> context) {

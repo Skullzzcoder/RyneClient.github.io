@@ -40,7 +40,7 @@ The first run downloads Gradle 9.5.1, which takes a minute. Loom 1.17.20 declare
 `org.gradle.plugin.api-version` 9.5.0, so an older wrapper fails to resolve the plugin at
 all — hence the pinned distribution in `gradle/wrapper/gradle-wrapper.properties`.
 
-The jar lands in `build/libs/mirage-1.7.2.jar`. Ignore the `-sources` one.
+The jar lands in `build/libs/mirage-1.8.0.jar`. Ignore the `-sources` one.
 
 **Delete any older `mirage-*.jar` from your `mods/` folder before copying the new one
 in.** The version is in the filename, so a new build does not overwrite the old one --
@@ -91,7 +91,7 @@ powershell -ExecutionPolicy Bypass -File fabric-versions.ps1 -MinecraftVersion 2
 gradlew build -Ptarget=26.2
 ```
 
-That writes `versions/26.2.properties` and builds `mirage-mc26.2-1.7.2.jar` beside the
+That writes `versions/26.2.properties` and builds `mirage-mc26.2-1.8.0.jar` beside the
 1.21.11 one, so two targets never overwrite each other.
 
 **One jar per Minecraft version** — a Fabric mod is compiled against remapped Minecraft
@@ -149,7 +149,7 @@ standalone script rather than a Gradle task.
 
 ## Installing
 
-Drop `mirage-1.7.2.jar` and the [Fabric API](https://modrinth.com/mod/fabric-api) jar into
+Drop `mirage-1.8.0.jar` and the [Fabric API](https://modrinth.com/mod/fabric-api) jar into
 your server's `mods/` folder and restart. Nothing goes on the clients.
 
 State lives in `<world>/mirage.json`, so pranks survive a restart.
@@ -439,14 +439,26 @@ Presets default to one gold ingot and one diamond. To change them:
 
 ### Browser dashboard
 
-A page showing which rig is in use, what it is currently rigged toward, and any fixed
-per-dispenser answers, with buttons to switch either:
+A page showing which rig is in use, what it is currently rigged toward, any fixed
+per-dispenser answers, and a **Settings** tab with every module and every knob the in-game
+menus have — the same ones, reading and writing the same values, so you can leave the game
+alone and change things from a second monitor or a phone.
+
+**The address has a key on the end.** The mod prints it in the log when the dashboard
+starts:
 
 ```
-http://localhost:25599
+http://127.0.0.1:25599/?k=q7mfp2xkd9vt...
 ```
 
-Handy on a second monitor or a phone. It is configured in `config/mirage-client.json`:
+Open that, not the bare address. Anything that changes a setting needs the key; reading
+the page does not. The key is new every time the game starts and is never written to disk.
+
+This is not decoration. The dashboard listens on 127.0.0.1, which sounds private and is
+not — every page open in your browser can reach your own machine, so before the key an
+`<img src="http://127.0.0.1:25599/power?on=0">` on any site you happened to visit would
+have thrown your master switch. Nobody has to find your computer for that; the browser is
+already on it. It is configured in `config/mirage-client.json`:
 
 ```json
 "dashboard": { "enabled": true, "port": 25599, "host": "127.0.0.1" }
@@ -623,6 +635,27 @@ them with `/mirage ghost clear` first.
   dispenser over a hopper unless you want that.
 - Rigs are saved by dimension and coordinates, so breaking the dispenser doesn't clear the
   rig — use `/mirage dispenser clear`.
+
+### Building a fake build for real
+
+A fake build is a picture — it is drawn into your own copy of the world and stops at the
+edge of your screen. `/fake build guide` turns it into instructions for making it real:
+
+```
+--- build guide ---
+118 of 512 placed  (23%)
+  obsidian              301 left  (98/399)
+  glass                  93 left  (20/113)
+Nearest: obsidian at 142 71 -308
+```
+
+Stand inside a build you have put down, run it, and it tells you what to go and mine and
+which block to walk to next. Place one and the number goes down — it reads the world each
+time rather than remembering, so it cannot drift out of step with what is actually there.
+
+"Already there" is judged on the block, not the full block state. Obsidian is obsidian
+whichever way you were facing when you placed it; demanding an exact state match would
+leave every stair and slab permanently unfinished.
 
 ## Adding fake blocks in the world
 

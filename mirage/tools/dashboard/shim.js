@@ -41,6 +41,24 @@ globalThis.window = { getSelection: () => ({ removeAllRanges() {}, addRange() {}
 Object.defineProperty(globalThis, 'navigator', {
   value: { clipboard: { writeText: async () => {} } }, configurable: true, writable: true,
 });
+// The page reads its key out of the address it was opened at. Without this the whole
+// script throws on load, which is exactly the failure this harness exists to catch -- so
+// the shim grows a location rather than the page growing a guard for a global that is
+// always there in a browser.
+globalThis.location = { search: '?k=testkey', href: 'http://127.0.0.1:25599/?k=testkey' };
+globalThis.URLSearchParams = class {
+  constructor(query) {
+    this.pairs = new Map();
+    for (const part of String(query || '').replace(/^\?/, '').split('&')) {
+      if (!part) continue;
+      const at = part.indexOf('=');
+      if (at < 0) this.pairs.set(part, '');
+      else this.pairs.set(part.slice(0, at), decodeURIComponent(part.slice(at + 1)));
+    }
+  }
+  get(name) { return this.pairs.has(name) ? this.pairs.get(name) : null; }
+};
+
 globalThis.setTimeout = () => 0;
 globalThis.setInterval = () => 0;
 globalThis.fetch = async () => ({ text: async () => '{}' });

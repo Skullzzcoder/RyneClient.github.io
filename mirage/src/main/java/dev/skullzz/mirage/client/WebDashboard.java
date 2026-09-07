@@ -107,11 +107,15 @@ public final class WebDashboard {
             server.createContext("/winner", WebDashboard::handleWinner);
             server.createContext("/power", WebDashboard::handlePower);
             server.createContext("/rigs", WebDashboard::handleRigs);
+            server.createContext("/set", WebDashboard::handleSet);
             server.setExecutor(null);
             server.start();
 
             boundPort = server.getAddress().getPort();
-            Mirage.LOGGER.info("Mirage dashboard on http://{}:{}", host, boundPort);
+            // A new key every start, so an address pasted into a browser last week does
+            // not still drive the client this week.
+            WebAuth.renew();
+            Mirage.LOGGER.info("Mirage dashboard on {}", WebAuth.address(host, boundPort));
         } catch (IOException e) {
             server = null;
             Mirage.LOGGER.error("Mirage could not open the dashboard on {}:{} -- {}",
@@ -184,10 +188,73 @@ public final class WebDashboard {
     // ----------------------------------------------------------------- handlers
 
     private static void handleState(HttpExchange exchange) throws IOException {
-        respond(exchange, 200, "application/json", snapshot.get());
+        // The settings ride along with the rest of the state, so the page has one thing to
+        // poll and cannot show a module and its knobs from two different moments.
+        String both = "{\"state\":" + snapshot.get() + ",\"settings\":"
+                + WebSettings.toJson(modules.get()) + "}";
+        respond(exchange, 200, "application/json", both);
+    }
+
+    /** The settings the tick last described, for the page to draw itself from. */
+    private static final AtomicReference<java.util.List<WebSettings.Module>> modules =
+            new AtomicReference<>(java.util.List.of());
+
+    /** Changes a browser asked for, waiting for a tick to apply them. */
+    private static final java.util.concurrent.ConcurrentLinkedQueue<WebSettings.Change>
+            pendingChanges = new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+    /** Called from the client tick with the settings as they now stand. */
+    public static void publishSettings(java.util.List<WebSettings.Module> described) {
+        modules.set(described == null ? java.util.List.of() : described);
+    }
+
+    public static java.util.List<WebSettings.Module> settings() {
+        return modules.get();
+    }
+
+    /** Everything a browser has asked for since the last tick, in order. */
+    public static java.util.List<WebSettings.Change> drainChanges() {
+        java.util.List<WebSettings.Change> taken = new java.util.ArrayList<>();
+        for (WebSettings.Change change = pendingChanges.poll(); change != null;
+                change = pendingChanges.poll()) {
+            taken.add(change);
+            // A page holding the button down should not be able to make the tick that
+            // drains it arbitrarily long.
+            if (taken.size() >= 64) break;
+        }
+        return taken;
+    }
+
+    /**
+     * A browser turning one knob, or flipping one module.
+     *
+     * <p>Read against the settings as last published -- the ones the page was actually
+     * looking at -- so a tab left open since before the menu was rebuilt asks for
+     * something that no longer exists and is told no, rather than changing whatever
+     * happens to sit in that position now.
+     */
+    private static void handleSet(HttpExchange exchange) throws IOException {
+        String query = exchange.getRequestURI().getQuery();
+        if (!WebAuth.allows(query)) {
+            respond(exchange, 403, "text/plain", "no key");
+            return;
+        }
+
+        WebSettings.Change change = WebSettings.read(query, modules.get());
+        if (change == null) {
+            respond(exchange, 400, "text/plain", "no such setting");
+            return;
+        }
+
+        pendingChanges.add(change);
+        respond(exchange, 200, "application/json", "{\"ok\":true}");
     }
 
     private static void handleSelect(HttpExchange exchange) throws IOException {
+        if (!WebAuth.allows(exchange.getRequestURI().getQuery())) {
+            respond(exchange, 403, "text/plain", "no key");
+            return;
+        }
         String query = exchange.getRequestURI().getQuery();
         int index = -1;
         if (query != null && query.startsWith("i=")) {
@@ -207,18 +274,30 @@ public final class WebDashboard {
     }
 
     private static void handlePower(HttpExchange exchange) throws IOException {
+        if (!WebAuth.allows(exchange.getRequestURI().getQuery())) {
+            respond(exchange, 403, "text/plain", "no key");
+            return;
+        }
         String query = exchange.getRequestURI().getQuery();
         requestedPower.set(query != null && query.contains("on=1"));
         respond(exchange, 200, "application/json", "{\"ok\":true}");
     }
 
     private static void handleRigs(HttpExchange exchange) throws IOException {
+        if (!WebAuth.allows(exchange.getRequestURI().getQuery())) {
+            respond(exchange, 403, "text/plain", "no key");
+            return;
+        }
         String query = exchange.getRequestURI().getQuery();
         requestedRigs.set(query != null && query.contains("on=1"));
         respond(exchange, 200, "application/json", "{\"ok\":true}");
     }
 
     private static void handleWinner(HttpExchange exchange) throws IOException {
+        if (!WebAuth.allows(exchange.getRequestURI().getQuery())) {
+            respond(exchange, 403, "text/plain", "no key");
+            return;
+        }
         String query = exchange.getRequestURI().getQuery();
         if (query == null || !query.startsWith("side=")) {
             respond(exchange, 400, "text/plain", "bad side");
@@ -231,6 +310,10 @@ public final class WebDashboard {
     }
 
     private static void handleRig(HttpExchange exchange) throws IOException {
+        if (!WebAuth.allows(exchange.getRequestURI().getQuery())) {
+            respond(exchange, 403, "text/plain", "no key");
+            return;
+        }
         String query = exchange.getRequestURI().getQuery();
         if (query == null || !query.startsWith("name=")) {
             respond(exchange, 400, "text/plain", "bad rig");
@@ -243,6 +326,10 @@ public final class WebDashboard {
     }
 
     private static void handleShot(HttpExchange exchange) throws IOException {
+        if (!WebAuth.allows(exchange.getRequestURI().getQuery())) {
+            respond(exchange, 403, "text/plain", "no key");
+            return;
+        }
         String query = exchange.getRequestURI().getQuery();
         int shot = -1;
         if (query != null && query.startsWith("n=")) {
@@ -262,22 +349,38 @@ public final class WebDashboard {
     }
 
     private static void handleFire(HttpExchange exchange) throws IOException {
+        if (!WebAuth.allows(exchange.getRequestURI().getQuery())) {
+            respond(exchange, 403, "text/plain", "no key");
+            return;
+        }
         requestedFire.set(true);
         respond(exchange, 200, "application/json", "{\"ok\":true}");
     }
 
     private static void handleRefill(HttpExchange exchange) throws IOException {
+        if (!WebAuth.allows(exchange.getRequestURI().getQuery())) {
+            respond(exchange, 403, "text/plain", "no key");
+            return;
+        }
         requestedRefill.set(true);
         respond(exchange, 200, "application/json", "{\"ok\":true}");
     }
 
     private static void handleArm(HttpExchange exchange) throws IOException {
+        if (!WebAuth.allows(exchange.getRequestURI().getQuery())) {
+            respond(exchange, 403, "text/plain", "no key");
+            return;
+        }
         String query = exchange.getRequestURI().getQuery();
         requestedArm.set(query != null && query.contains("off=1") ? 0 : 1);
         respond(exchange, 200, "application/json", "{\"ok\":true}");
     }
 
     private static void handleReset(HttpExchange exchange) throws IOException {
+        if (!WebAuth.allows(exchange.getRequestURI().getQuery())) {
+            respond(exchange, 403, "text/plain", "no key");
+            return;
+        }
         requestedReset.set(true);
         respond(exchange, 200, "application/json", "{\"ok\":true}");
     }
@@ -468,18 +571,33 @@ public final class WebDashboard {
               { id: 'schematics', label: 'Schematics', group: 'MODULES' },
               { id: 'mapart',     label: 'Map art',    group: 'MODULES' },
               { id: 'tracker',    label: 'Tracker',    group: 'MODULES' },
+              { id: 'settings',   label: 'Settings',   group: 'CLIENT' },
               { id: 'log',        label: 'Activity',   group: 'CLIENT' },
             ];
 
             let state = {};
+            let settings = [];
             let open = 'overview';
             let query = '';
 
+            // The key out of the address you opened. Every request that changes
+            // something carries it; without it the client answers 403, which is what
+            // stops a page on some other site from driving your game.
+            const KEY = new URLSearchParams(location.search).get('k') || '';
+            const keyed = url =>
+                url + (url.includes('?') ? '&' : '?') + 'k=' + encodeURIComponent(KEY);
+
             const post = async url => {
-              try { await fetch(url); } catch (failure) { /* the client went away */ }
+              try { await fetch(keyed(url)); } catch (failure) { /* the client went away */ }
               last = '';
               refresh();
             };
+
+            const setKnob = (module, index, value) =>
+                post('/set?p=' + encodeURIComponent(module.panel)
+                    + '&r=' + encodeURIComponent(module.row)
+                    + (index === null ? '' : '&i=' + index)
+                    + '&v=' + encodeURIComponent(value));
 
             // ------------------------------------------------------------- the sidebar
 
@@ -720,6 +838,87 @@ public final class WebDashboard {
               logInto(host, files.map(f => f + '   -   /fake map import ' + f + ' <name>'));
             };
 
+            // Every module and every knob, the same ones the in-game menus show,
+            // grouped by the panel they live on. Nothing here knows what any setting
+            // means -- it draws whatever the client described, so a knob added in game is
+            // on this page without a line being written for it.
+            pages.settings = (host, s) => {
+              host.appendChild(make('h2', '', 'Settings'));
+              if (!KEY) {
+                const warn = make('div', 'card',
+                    'This page was opened without its key, so nothing here can be changed. '
+                    + 'Use the address the mod prints in chat -- it ends in ?k=...');
+                host.appendChild(warn);
+              }
+              if (!settings.length) {
+                host.appendChild(make('div', 'card',
+                    'Nothing described yet. Open the client once in game.'));
+                return;
+              }
+
+              const groups = {};
+              for (const module of settings) {
+                (groups[module.panel] = groups[module.panel] || []).push(module);
+              }
+
+              for (const panel of Object.keys(groups)) {
+                host.appendChild(make('h3', '', panel));
+                const grid = make('div', 'grid');
+                for (const module of groups[panel]) {
+                  const box = make('div', 'card');
+                  const head = make('div', 'row');
+                  head.appendChild(make('strong', '', module.row));
+                  if (module.toggle) {
+                    const button = make('button', module.on ? 'on' : '',
+                        module.on ? 'ON' : 'OFF');
+                    button.onclick = () => setKnob(module, null, module.on ? 0 : 1);
+                    head.appendChild(button);
+                  }
+                  box.appendChild(head);
+
+                  for (const knob of module.knobs) {
+                    const line = make('div', 'row');
+                    line.appendChild(make('span', 'dim', knob.label));
+
+                    if (knob.shape === 'switch') {
+                      const button = make('button', knob.value >= 0.5 ? 'on' : '',
+                          knob.shown);
+                      button.onclick =
+                          () => setKnob(module, knob.index, knob.value >= 0.5 ? 0 : 1);
+                      line.appendChild(button);
+                    } else if (knob.shape === 'mode') {
+                      const picker = make('select');
+                      knob.options.forEach((name, i) => {
+                        const choice = make('option', '', name);
+                        choice.value = i;
+                        if (i === Math.round(knob.value)) choice.selected = true;
+                        picker.appendChild(choice);
+                      });
+                      picker.onchange =
+                          event => setKnob(module, knob.index, event.target.value);
+                      line.appendChild(picker);
+                    } else {
+                      const slider = make('input');
+                      slider.type = 'range';
+                      slider.min = knob.least;
+                      slider.max = knob.most;
+                      slider.step = knob.step;
+                      slider.value = knob.value;
+                      // On release, not on every pixel of the drag: one request per value
+                      // would be a hundred of them for one slider.
+                      slider.onchange =
+                          event => setKnob(module, knob.index, event.target.value);
+                      line.appendChild(slider);
+                      line.appendChild(make('span', '', knob.shown));
+                    }
+                    box.appendChild(line);
+                  }
+                  grid.appendChild(box);
+                }
+                host.appendChild(grid);
+              }
+            };
+
             pages.tracker = (host, s) => {
               host.appendChild(make('h2', '', 'Tracker'));
               const t = s.tracker || {};
@@ -840,7 +1039,11 @@ public final class WebDashboard {
                 const text = await answer.text();
                 if (text === last) return;
                 last = text;
-                state = JSON.parse(text);
+                const parsed = JSON.parse(text);
+                // The feed now carries both halves. An older client sends only the state,
+                // so the shape is checked rather than assumed.
+                state = parsed.state || parsed;
+                settings = parsed.settings || [];
                 draw();
               } catch (failure) {
                 // Minecraft closed, or has not opened the port yet. Left as it was rather

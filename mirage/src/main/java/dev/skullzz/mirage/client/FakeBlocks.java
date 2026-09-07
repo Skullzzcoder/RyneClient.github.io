@@ -30,6 +30,7 @@ import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
+import net.minecraft.registry.Registries;
 import net.minecraft.util.math.BlockPos;
 
 import dev.skullzz.mirage.Mirage;
@@ -294,6 +295,37 @@ public final class FakeBlocks {
     public static boolean forget(String name) {
         take(name);
         return builds.remove(name) != null;
+    }
+
+    /**
+     * Every spot a shown build wants filled, and whether the real world already has it.
+     *
+     * <p>The one loop that has to touch the world, kept here where the world already is.
+     * Everything done with the answer -- counting materials, working out what is nearest,
+     * printing it -- is in {@link BuildGuide}, which has no Minecraft in it and is tested.
+     *
+     * <p>"Already has it" is compared on the block, not the whole state. Obsidian is
+     * obsidian whichever way you were facing when you placed it, and demanding an exact
+     * state match would leave stairs and slabs permanently unfinished.
+     */
+    public static java.util.List<BuildGuide.Spot> guide() {
+        java.util.List<BuildGuide.Spot> spots = new java.util.ArrayList<>();
+        ClientWorld world = MinecraftClient.getInstance().world;
+        if (world == null) return spots;
+
+        for (java.util.Map.Entry<BlockPos, BlockState> entry : showing.entrySet()) {
+            BlockPos pos = entry.getKey();
+            BlockState wanted = entry.getValue();
+            if (wanted == null || wanted.isAir()) continue;
+
+            BlockState there = world.getBlockState(pos);
+            boolean done = there != null && there.getBlock() == wanted.getBlock();
+            spots.add(new BuildGuide.Spot(pos.getX(), pos.getY(), pos.getZ(),
+                    BuildGuide.shortName(
+                            Registries.BLOCK.getId(wanted.getBlock()).toString()),
+                    done));
+        }
+        return spots;
     }
 
     // ----------------------------------------------------------------- showing
