@@ -352,12 +352,19 @@ public final class ClientDispensers {
     public static void setDispenserResult(BlockPos pos, FakeSpec spec) {
         active().perDispenser.put(pos.toImmutable(), spec);
         watched.add(pos.toImmutable());
-        // It now fires something different, so what it looks like it holds has to follow.
+        // Laid out again, but the layout no longer follows the answer: a machine shows
+        // the game whatever it is rigged to fire. See fill().
         fill(pos);
     }
 
     public static boolean clearDispenserResult(BlockPos pos) {
-        return active().perDispenser.remove(pos) != null;
+        if (active().perDispenser.remove(pos) == null) return false;
+
+        // Laid out again, because whatever it is holding was laid out while it had a fixed
+        // answer -- and for as long as that branch filled every slot with the rigged item,
+        // that is nine of them. Clearing the answer has to clear the evidence of it.
+        fill(pos);
+        return true;
     }
 
     public static void invalidateResult() {
@@ -815,6 +822,18 @@ public final class ClientDispensers {
      * gets one of each of the rig's items, so a coin flip holds one of each side and looks
      * the same whichever way it is currently rigged.
      */
+    /**
+     * How many slots a machine outside a laid-out game shows, and therefore what it shows.
+     *
+     * <p>Pure and separate because it is the rule that was got wrong: a fixed answer must
+     * not change how the machine looks. One slot per preset, in order; the fixed answer
+     * only ever fills in for a rig that has no presets to show at all.
+     */
+    static int cycledSlotCount(int presets, boolean hasFixedAnswer, int stockSlots) {
+        if (presets > 0) return Math.min(presets, stockSlots);
+        return hasFixedAnswer ? 1 : 0;
+    }
+
     public static boolean fill(BlockPos pos) {
         return fill(pos, true);
     }
@@ -900,16 +919,25 @@ public final class ClientDispensers {
                 }
             }
         } else {
+            // One of each, in order. A coin flip is the two things you could win sat side
+            // by side, not a box full of them, and holding both means switching which one
+            // is rigged never changes what the dispenser looks like.
+            //
+            // That last part used not to hold. A machine with a fixed answer took a branch
+            // of its own that filled all nine slots with whatever it was rigged to fire --
+            // so the coin flip laid out as nine gold blocks, and anyone who opened it could
+            // read the result off the glass before it fired. The two comments in this
+            // method contradicted each other and this was the one that was wrong: what a
+            // machine holds shows the game, what it fires is the rig, and the whole point
+            // is that the first does not give away the second.
             FakeSpec fixed = profile.perDispenser.get(pos);
-            if (fixed != null) {
-                for (int slot = 0; slot < STOCK_SLOTS; slot++) {
-                    slots.put(slot, fixed.withCount(fixed.count));
-                }
+            int count = cycledSlotCount(profile.presets.size(), fixed != null, STOCK_SLOTS);
+
+            if (profile.presets.isEmpty()) {
+                // Nothing to show the game with. A machine rigged to fire one thing and
+                // holding nothing looks broken, so it shows the one thing.
+                if (count > 0 && fixed != null) slots.put(0, fixed.withCount(fixed.count));
             } else {
-                // One of each, in order. A coin flip is the two things you could win sat
-                // side by side, not a box full of them, and holding both means switching
-                // which one is rigged never changes what the dispenser looks like.
-                int count = Math.min(profile.presets.size(), STOCK_SLOTS);
                 for (int slot = 0; slot < count; slot++) {
                     FakeSpec spec = profile.presets.get(slot);
                     slots.put(slot, spec.withCount(spec.count));
@@ -2149,10 +2177,12 @@ public final class ClientDispensers {
     private static void seedDefaults() {
         if (needsSeeding("5050")) {
             RigProfile coinFlip = new RigProfile("5050");
-            Item gold = SelfFakes.lookupItem("gold_block");
+            // Diamond first, gold second, because that is the order they are laid out in
+            // and the order the slots come out in: slot one diamond, slot two gold.
             Item diamond = SelfFakes.lookupItem("diamond_block");
-            if (gold != null) coinFlip.presets.add(new FakeSpec(gold, 1, ""));
+            Item gold = SelfFakes.lookupItem("gold_block");
             if (diamond != null) coinFlip.presets.add(new FakeSpec(diamond, 1, ""));
+            if (gold != null) coinFlip.presets.add(new FakeSpec(gold, 1, ""));
             coinFlip.setPresetIndex(coinFlip.presets.isEmpty() ? -1 : 0);
             profiles.put(coinFlip.name, coinFlip);
         }

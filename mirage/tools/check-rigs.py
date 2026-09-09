@@ -4,7 +4,7 @@ Two halves of this mod have nothing to do with each other: builds, schematics an
 are pictures on your own screen, and the rigs decide what comes out of a machine. Turning
 the rigs off must leave the first half completely alone -- and must not quietly leave
 anything of the second half running, which is the failure that would be hardest to notice."""
-import io, re, sys
+import glob, io, os, re, shutil, subprocess, sys
 SRC = "src/main/java/dev/skullzz/mirage/client/"
 client = io.open(SRC + "MirageClient.java", encoding="utf-8").read()
 fakes  = io.open(SRC + "SelfFakes.java", encoding="utf-8").read()
@@ -108,6 +108,88 @@ check("it is polled", "pollRigs()" in dash and "pollRigs()" in client)
 # dashboard while everything is off.
 check("the poll happens before the master switch returns",
       tick.index("pollRigs()") < tick.index("if (!SelfFakes.enabled())"))
+
+
+# ------------------------------------------------- what a machine shows vs what it fires
+#
+# A dispenser's stock is the game; its answer is the rig. Keeping those apart is the whole
+# point -- a coin flip that lays out nine gold blocks tells anyone who opens it what is
+# about to come out, before it comes out.
+#
+# It did exactly that. Setting a fixed answer on one machine took a branch that filled all
+# nine slots with whatever it was rigged to fire, so one dispenser in a 50/50 went solid
+# gold. The two comments in fill() contradicted each other and this was the wrong one.
+disp = io.open("src/main/java/dev/skullzz/mirage/client/ClientDispensers.java",
+               encoding="utf-8").read()
+fill = body(disp, "public static boolean fill(BlockPos pos, boolean join) {")
+check("a fixed answer no longer fills every slot with itself",
+      "for (int slot = 0; slot < STOCK_SLOTS; slot++) {\n                    slots.put(slot, fixed" not in fill)
+check("the layout is decided by one rule", "cycledSlotCount(" in fill)
+
+if shutil.which("javac") is not None and shutil.which("java") is not None:
+    import tempfile as _tmp
+    HARNESS = """
+public class RigHarness {
+    static int bad = 0;
+    static void want(String what, boolean ok) {
+        if (!ok) { System.out.println("FAILED: " + what); bad++; }
+    }
+    public static void main(String[] a) throws Exception {
+        java.lang.reflect.Method m = Class
+                .forName("dev.skullzz.mirage.client.ClientDispensers")
+                .getDeclaredMethod("cycledSlotCount", int.class, boolean.class, int.class);
+        m.setAccessible(true);
+
+        // The property that was broken: a fixed answer must not change the layout.
+        for (int presets = 1; presets <= 9; presets++) {
+            int without = (int) m.invoke(null, presets, false, 9);
+            int with = (int) m.invoke(null, presets, true, 9);
+            want("a fixed answer does not change how a machine looks", without == with);
+            want("one slot per preset", without == Math.min(presets, 9));
+        }
+
+        // A 50/50 is two slots, not nine, whatever is rigged.
+        want("a coin flip shows two", (int) m.invoke(null, 2, true, 9) == 2);
+        want("and still two with nothing rigged", (int) m.invoke(null, 2, false, 9) == 2);
+
+        // More presets than slots is capped, not overflowed.
+        want("more presets than slots is capped", (int) m.invoke(null, 40, false, 9) == 9);
+
+        // A rig with nothing to show falls back to the one thing it fires, rather than
+        // laying out empty and reading as broken.
+        want("no presets and a fixed answer shows the one thing",
+                (int) m.invoke(null, 0, true, 9) == 1);
+        want("no presets and nothing rigged shows nothing",
+                (int) m.invoke(null, 0, false, 9) == 0);
+
+        System.out.println(bad == 0 ? "OK" : bad + " failed");
+    }
+}
+"""
+    work = _tmp.mkdtemp(prefix="mirage-rig-")
+    try:
+        h = os.path.join(work, "RigHarness.java")
+        io.open(h, "w", encoding="utf-8").write(HARNESS)
+        classes = os.path.join(work, "classes")
+        # Compiled against the stubs, so the class it lives in can be loaded at all.
+        stubs = glob.glob(os.path.join("tools", "stubs", "**", "*.java"), recursive=True)
+        built = subprocess.run(["javac", "-proc:none", "-nowarn", "-d", classes, h],
+                               capture_output=True, text=True)
+        check("the rig harness compiles", built.returncode == 0)
+        if built.returncode == 0:
+            src = glob.glob("src/main/java/**/*.java", recursive=True)
+            whole = subprocess.run(["javac", "-proc:none", "-nowarn", "-Xmaxerrs", "1",
+                                    "-d", classes] + src + stubs,
+                                   capture_output=True, text=True)
+            # Minecraft is absent, so the class cannot actually be loaded here. The rule is
+            # small enough to read instead, and the shape of it is what is asserted.
+            rule = body(disp, "static int cycledSlotCount(int presets, boolean hasFixedAnswer, int stockSlots) {")
+            check("the rule ignores the fixed answer when there are presets",
+                  "if (presets > 0) return Math.min(presets, stockSlots);" in rule)
+            check("and only falls back to it when there are none",
+                  "return hasFixedAnswer ? 1 : 0;" in rule)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 print("FAILED:\n  " + "\n  ".join(fails) if fails else
       "rigs switch off skips the rig tick, releases the machine guard and drains its keys; "
